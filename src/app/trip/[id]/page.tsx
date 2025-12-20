@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, use } from 'react';
+import React, { useState, useEffect, useCallback, use } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import BudgetView from '@/components/BudgetView';
+import { supabase } from '@/lib/supabaseClient';
 
+// --- IKONY ---
 const ArrowLeft = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>;
 const ClockIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
 const WalletIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>;
@@ -15,6 +17,7 @@ const SettingsIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" he
 const CheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>;
 const UsersIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
 const TrashIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>;
+const Share2Icon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></svg>;
 
 type Event = { id: number; time: string; title: string; };
 type Participant = { id: number; name: string; };
@@ -31,6 +34,7 @@ type Trip = {
   notes?: string; photoLink?: string; coverImage?: string;
   baseCurrency?: string;
   totalBudget?: number;
+  shareCode?: string;
 };
 
 const GRADIENTS = [
@@ -38,13 +42,16 @@ const GRADIENTS = [
   "from-yellow-400 to-orange-500", "from-pink-500 to-rose-500", "from-gray-700 to-black",
 ];
 
-const CURRENCIES = ["CZK", "EUR", "USD", "PLN", "HRK", "GBP", "VND", "IDR"];
+const CURRENCIES = ["CZK", "EUR", "USD", "PLN", "HRK", "GBP", "VND", "IDR", "HUF", "THB"];
 
 export default function TripDetail({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
+  const tripId = Number(resolvedParams.id);
   const router = useRouter();
+  
   const [trip, setTrip] = useState<Trip | null>(null);
   const [activeTab, setActiveTab] = useState<'plan' | 'budget' | 'info' | 'settings'>('plan');
+  const [loading, setLoading] = useState(true);
 
   const [newEvent, setNewEvent] = useState("");
   const [newTime, setNewTime] = useState("");
@@ -52,110 +59,112 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
   const [photoLink, setPhotoLink] = useState("");
   const [isEditingLink, setIsEditingLink] = useState(false);
   const [newParticipant, setNewParticipant] = useState("");
+  
   const [editName, setEditName] = useState("");
   const [editDate, setEditDate] = useState("");
   const [editImage, setEditImage] = useState("");
   const [editCurrency, setEditCurrency] = useState("CZK");
   const [editBudget, setEditBudget] = useState("");
 
-  useEffect(() => {
-    const savedTrips = JSON.parse(localStorage.getItem("trips") || "[]");
-    const foundTrip = savedTrips.find((t: Trip) => t.id === Number(resolvedParams.id));
-    if (foundTrip) {
-      if (!foundTrip.events) foundTrip.events = [];
-      if (!foundTrip.expenses) foundTrip.expenses = [];
-      if (!foundTrip.participants) foundTrip.participants = [];
-      setTrip(foundTrip);
-      setNotes(foundTrip.notes || "");
-      setPhotoLink(foundTrip.photoLink || "");
-      setEditName(foundTrip.name);
-      setEditDate(foundTrip.date);
-      setEditImage(foundTrip.coverImage || "");
-      setEditCurrency(foundTrip.baseCurrency || "CZK");
-      setEditBudget(foundTrip.totalBudget ? String(foundTrip.totalBudget) : "");
-    } else { router.push("/"); }
-  }, [resolvedParams.id, router]);
+  const fetchTripData = useCallback(async () => {
+    if (isNaN(tripId)) { router.push('/'); return; }
+    try {
+        const { data: tripData, error: tripError } = await supabase.from('trips').select('*').eq('id', tripId).single();
+        if (tripError || !tripData) { router.push('/'); return; }
 
-  const saveTrip = (updatedTrip: Trip) => {
-    setTrip(updatedTrip);
-    const allTrips = JSON.parse(localStorage.getItem("trips") || "[]");
-    const newAllTrips = allTrips.map((t: Trip) => t.id === updatedTrip.id ? updatedTrip : t);
-    localStorage.setItem("trips", JSON.stringify(newAllTrips));
-    window.dispatchEvent(new Event("tripUpdated"));
-  };
+        const { data: participantsData } = await supabase.from('participants').select('*').eq('trip_id', tripId);
+        const { data: expensesData } = await supabase.from('expenses').select('*').eq('trip_id', tripId);
+        const { data: detailsData } = await supabase.from('trip_details').select('*').eq('trip_id', tripId).maybeSingle();
+        const { data: eventsData } = await supabase.from('events').select('*').eq('trip_id', tripId).order('time', { ascending: true }); // Načtení plánu
 
-  const addEvent = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newEvent || !newTime || !trip) return;
-    const event = { id: Date.now(), time: newTime, title: newEvent };
-    const updatedTrip = { ...trip, events: [...(trip.events || []), event] };
-    updatedTrip.events?.sort((a, b) => a.time.localeCompare(b.time));
-    saveTrip(updatedTrip);
-    setNewEvent("");
-    setNewTime("");
-  };
-  const deleteEvent = (id: number) => {
-    if (!trip) return;
-    saveTrip({ ...trip, events: trip.events?.filter(e => e.id !== id) });
-  };
+        const loadedExpenses: Expense[] = (expensesData || []).map((e: any) => ({
+            id: e.id, title: e.title, amount: e.amount, currency: e.currency, exchangeRate: e.exchange_rate, payer: e.payer, category: e.category, splitMethod: e.split_method, splitDetails: e.split_details, forWhom: e.for_whom, isSettlement: e.is_settlement
+        }));
 
-  const addExpense = (expenseData: Omit<Expense, "id">) => {
-    if (!trip) return;
-    const expense = { id: Date.now(), ...expenseData };
-    const newExpenses = [...(trip.expenses || []), expense];
-    const newSpent = newExpenses.reduce((sum, item) => {
-        if (item.isSettlement) return sum;
-        const rate = item.exchangeRate || 1;
-        return sum + (item.amount * rate);
-    }, 0);
-    saveTrip({ ...trip, expenses: newExpenses, spent: Math.round(newSpent) });
-  };
+        const totalSpent = loadedExpenses.reduce((sum, item) => {
+            if (item.isSettlement) return sum;
+            const rate = item.exchangeRate || 1;
+            return sum + (item.amount * rate);
+        }, 0);
 
-  const deleteExpense = (id: number) => {
-    if (!trip) return;
-    const newExpenses = trip.expenses?.filter(e => e.id !== id) || [];
-    const newSpent = newExpenses.reduce((sum, item) => {
-        if (item.isSettlement) return sum;
-        const rate = item.exchangeRate || 1;
-        return sum + (item.amount * rate);
-    }, 0);
-    saveTrip({ ...trip, expenses: newExpenses, spent: Math.round(newSpent) });
-  };
+        setTrip({
+            id: tripData.id,
+            name: tripData.name,
+            date: tripData.date,
+            color: tripData.color,
+            baseCurrency: tripData.base_currency,
+            totalBudget: tripData.total_budget,
+            shareCode: tripData.share_code,
+            budget: 0,
+            spent: Math.round(totalSpent),
+            coverImage: tripData.cover_image,
+            notes: detailsData?.notes || "",
+            photoLink: detailsData?.photo_link || "",
+            events: eventsData || [], 
+            participants: participantsData || [],
+            expenses: loadedExpenses
+        });
 
-  const addParticipant = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newParticipant || !trip) return;
-    const participant = { id: Date.now(), name: newParticipant };
-    const updatedTrip = { ...trip, participants: [...(trip.participants || []), participant] };
-    saveTrip(updatedTrip);
-    setNewParticipant("");
-  };
-  const deleteParticipant = (id: number) => {
-    if (!trip) return;
-    saveTrip({ ...trip, participants: trip.participants?.filter(p => p.id !== id) });
-  };
-  const handleNoteChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newText = e.target.value; setNotes(newText); if (trip) saveTrip({ ...trip, notes: newText });
-  };
-  const savePhotoLink = () => { if (trip) saveTrip({ ...trip, photoLink: photoLink }); setIsEditingLink(false); };
+        setNotes(detailsData?.notes || "");
+        setPhotoLink(detailsData?.photo_link || "");
+        setEditName(tripData.name);
+        setEditDate(tripData.date);
+        setEditCurrency(tripData.base_currency || "CZK");
+        setEditBudget(tripData.total_budget || "");
+        setEditImage(tripData.cover_image || "");
+
+    } catch (err) { console.error(err); } finally { setLoading(false); }
+  }, [tripId, router]);
+
+  useEffect(() => { fetchTripData(); }, [fetchTripData]);
+
+  const addParticipant = async (e: React.FormEvent) => { e.preventDefault(); if (!newParticipant || !trip) return; await supabase.from('participants').insert([{ trip_id: tripId, name: newParticipant }]); setNewParticipant(""); fetchTripData(); };
+  const deleteParticipant = async (id: number) => { await supabase.from('participants').delete().eq('id', id); fetchTripData(); };
+  const addExpense = async (expenseData: Omit<Expense, "id">) => { if (!trip) return; const dbPayload = { trip_id: tripId, title: expenseData.title, amount: expenseData.amount, currency: expenseData.currency, exchange_rate: expenseData.exchangeRate, payer: expenseData.payer, category: expenseData.category, split_method: expenseData.splitMethod, split_details: expenseData.splitDetails, for_whom: expenseData.forWhom, is_settlement: expenseData.isSettlement }; await supabase.from('expenses').insert([dbPayload]); fetchTripData(); };
+  const deleteExpense = async (id: number) => { await supabase.from('expenses').delete().eq('id', id); fetchTripData(); };
+  const handleNoteChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => { setNotes(e.target.value); };
+  const saveDetails = async () => { const { data } = await supabase.from('trip_details').select('id').eq('trip_id', tripId).maybeSingle(); if (data) await supabase.from('trip_details').update({ notes, photo_link: photoLink }).eq('trip_id', tripId); else await supabase.from('trip_details').insert([{ trip_id: tripId, notes, photo_link: photoLink }]); };
+  const changeColor = async (newColor: string) => { await supabase.from('trips').update({ color: newColor, cover_image: null }).eq('id', tripId); fetchTripData(); };
   
-  const handleUpdateSettings = (e: React.FormEvent) => {
+  // Plán - SQL Update
+  const addEvent = async (e: React.FormEvent) => { 
+      e.preventDefault(); 
+      if (!newEvent || !newTime || !trip) return; 
+      await supabase.from('events').insert([{ trip_id: tripId, title: newEvent, time: newTime }]);
+      setNewEvent(""); setNewTime("");
+      fetchTripData();
+  };
+  const deleteEvent = async (id: number) => { 
+      await supabase.from('events').delete().eq('id', id);
+      fetchTripData();
+  };
+
+  const handleUpdateSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (trip) { 
-        saveTrip({ 
-            ...trip, 
-            name: editName, 
-            date: editDate, 
-            coverImage: editImage, 
-            baseCurrency: editCurrency,
-            totalBudget: editBudget ? Number(editBudget) : 0
-        }); 
-        alert("Nastavení uloženo! ✅"); 
+    const { error } = await supabase.from('trips').update({ 
+        name: editName, 
+        date: editDate, 
+        base_currency: editCurrency, 
+        total_budget: editBudget ? Number(editBudget) : 0, 
+        cover_image: editImage 
+    }).eq('id', tripId);
+
+    if (!error) {
+        alert("Nastavení uloženo! ✅");
+        fetchTripData();
+    } else {
+        alert("Chyba: " + error.message);
     }
   };
-  const changeColor = (newColor: string) => { if (trip) { saveTrip({ ...trip, color: newColor, coverImage: "" }); setEditImage(""); } };
 
-  if (!trip) return <div className="p-10 text-center">Načítám...</div>;
+  const copyShareCode = () => {
+      if(trip?.shareCode) {
+          navigator.clipboard.writeText(trip.shareCode);
+          alert("Kód zkopírován: " + trip.shareCode);
+      }
+  };
+
+  if (loading || !trip) return <div className="p-10 text-center flex justify-center items-center h-screen"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div></div>;
 
   const headerStyle = trip.coverImage ? { backgroundImage: `url(${trip.coverImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {};
   const headerClass = trip.coverImage ? "relative text-white" : `bg-gradient-to-r ${trip.color} text-white relative`;
@@ -167,11 +176,12 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
         <div className="relative z-10">
             <div className="mb-6 flex justify-between items-center">
                 <Link href="/" className="p-2 bg-white/20 rounded-full hover:bg-white/30 transition backdrop-blur-md inline-flex"><ArrowLeft /></Link>
+                <div className="bg-green-500/80 px-2 py-1 rounded text-[10px] font-bold text-white flex items-center gap-1">Online ☁️</div>
             </div>
             <div>
                 <h1 className="text-3xl font-bold drop-shadow-md">{trip.name}</h1>
                 <p className="opacity-95 flex items-center gap-2 text-sm mt-1 drop-shadow-sm font-medium"><ClockIcon /> {trip.date}</p>
-                <div className="mt-4 flex items-center gap-4 text-sm font-medium bg-black/30 p-2 rounded-lg inline-flex backdrop-blur-md border border-white/10"><span>💰 Útrata: {trip.spent} {trip.baseCurrency || "CZK"}</span></div>
+                <div className="mt-4 flex items-center gap-4 text-sm font-medium bg-black/30 p-2 rounded-lg inline-flex backdrop-blur-md border border-white/10"><span>💰 Útrata: {trip.spent} {trip.baseCurrency}</span></div>
             </div>
         </div>
       </div>
@@ -193,7 +203,7 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
                   <div className="absolute -left-[31px] top-1 w-4 h-4 bg-blue-500 rounded-full border-4 border-white shadow-sm"></div>
                   <div className="flex justify-between items-start">
                     <div><span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded mb-1 inline-block">{event.time}</span><p className="text-gray-900 font-medium">{event.title}</p></div>
-                    <button onClick={() => deleteEvent(event.id)} className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><TrashIcon /></button>
+                    <button onClick={() => deleteEvent(event.id)} className="text-gray-300 hover:text-red-500 opacity-100 transition-opacity"><TrashIcon /></button>
                   </div>
                 </div>
               ))}
@@ -237,18 +247,29 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
               </div>
               <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
                 <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2"><PhotoIcon /> Sdílené fotky</h3>
-                {!trip.photoLink || isEditingLink ? (
-                  <div className="flex gap-2"><input type="text" value={photoLink} onChange={(e) => setPhotoLink(e.target.value)} placeholder="Vlož odkaz na Google Photos..." className="bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm flex-1 focus:outline-blue-500" /><button onClick={savePhotoLink} className="bg-blue-600 text-white px-4 rounded-lg text-sm font-bold hover:bg-blue-700">OK</button></div>
-                ) : (
-                  <div><a href={trip.photoLink} target="_blank" rel="noreferrer" className="block bg-gradient-to-r from-purple-500 to-pink-500 text-white p-4 rounded-xl text-center font-bold shadow-md hover:opacity-90 transition">📸 Otevřít Galerii</a><button onClick={() => setIsEditingLink(true)} className="text-xs text-gray-400 mt-2 hover:text-gray-600 underline">Upravit odkaz</button></div>
+                <div className="flex gap-2"><input type="text" value={photoLink} onChange={(e) => setPhotoLink(e.target.value)} placeholder="Vlož odkaz na Google Photos..." className="bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm flex-1 focus:outline-blue-500" /><button onClick={saveDetails} className="bg-blue-600 text-white px-4 rounded-lg text-sm font-bold hover:bg-blue-700">Uložit</button></div>
+                {trip.photoLink && (
+                  <div className="mt-2"><a href={trip.photoLink} target="_blank" rel="noreferrer" className="block bg-gradient-to-r from-purple-500 to-pink-500 text-white p-3 rounded-xl text-center font-bold shadow-md hover:opacity-90 transition">📸 Otevřít Galerii</a></div>
                 )}
               </div>
-              <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-4 shadow-sm"><h3 className="font-bold text-yellow-800 mb-2">📝 Důležité poznámky</h3><textarea value={notes} onChange={handleNoteChange} placeholder="Zde si napiš kód od wifi, adresu..." className="w-full bg-transparent text-sm text-gray-800 placeholder-gray-400 focus:outline-none h-40 resize-none" /></div>
+              <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-4 shadow-sm"><h3 className="font-bold text-yellow-800 mb-2">📝 Důležité poznámky</h3><textarea value={notes} onChange={handleNoteChange} onBlur={saveDetails} placeholder="Zde si napiš kód od wifi, adresu..." className="w-full bg-transparent text-sm text-gray-800 placeholder-gray-400 focus:outline-none h-40 resize-none" /><p className="text-[10px] text-yellow-600 mt-1 text-right">Ukládá se automaticky po dopsání</p></div>
             </div>
           )}
 
           {activeTab === 'settings' && (
             <div className="space-y-6">
+              <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 mb-6">
+                  <h3 className="font-bold text-blue-900 mb-2 flex items-center gap-2"><Share2Icon /> Sdílení tripu</h3>
+                  <div className="bg-white p-3 rounded-xl flex justify-between items-center border border-blue-200">
+                      <span className="font-mono text-xl font-bold tracking-widest text-blue-600">{trip.shareCode}</span>
+                      <button onClick={copyShareCode} className="text-xs bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg font-bold hover:bg-blue-200">Kopírovat</button>
+                  </div>
+                  <p className="text-[10px] text-blue-700 mt-2">Tento kód pošli kamarádům. Zadají ho na úvodní stránce a připojí se.</p>
+                  <div className="mt-3 flex justify-center">
+                      <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${trip.shareCode}`} alt="QR Code" className="rounded-xl border-4 border-white shadow-sm" />
+                  </div>
+              </div>
+
               <h2 className="text-lg font-bold text-gray-800">Upravit Trip</h2>
               <form onSubmit={handleUpdateSettings} className="space-y-4">
                 <div><label className="block text-xs font-bold text-gray-500 mb-1">NÁZEV CESTY</label><input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 font-bold focus:outline-blue-500" /></div>

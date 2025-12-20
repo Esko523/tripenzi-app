@@ -12,6 +12,7 @@ const XIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="2
 const FilterIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>;
 const ChevronDown = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>;
 const RefreshIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>;
+const ShareIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/></svg>;
 
 // Ikony kategorií
 const FoodIcon = () => <span>🍔</span>;
@@ -50,7 +51,6 @@ const CATEGORIES = [
 ];
 
 const CURRENCIES = ["CZK", "EUR", "USD", "PLN", "HRK", "GBP", "VND", "IDR", "HUF", "THB"];
-const DEFAULT_RATES: Record<string, number> = { "CZK": 1, "EUR": 25.50, "USD": 23.80, "PLN": 5.90, "HRK": 3.35, "GBP": 30.10, "VND": 0.001, "IDR": 0.0015 };
 
 export default function BudgetView({ expenses, participants, baseCurrency, totalBudget, onAddExpense, onDeleteExpense }: BudgetProps) {
   const [isWizardOpen, setIsWizardOpen] = useState(false);
@@ -104,7 +104,6 @@ export default function BudgetView({ expenses, participants, baseCurrency, total
     fetchRates();
   }, [baseCurrency]);
 
-  // Výpočet kurzu
   useEffect(() => {
     if (currency === baseCurrency) {
         setExchangeRate(1);
@@ -114,7 +113,6 @@ export default function BudgetView({ expenses, participants, baseCurrency, total
     }
   }, [currency, baseCurrency, liveRates]);
 
-  // --- VÝPOČTY ---
   const { calculatedTotal, balances, debts, statsByCategory, statsByPerson } = useMemo(() => {
     let sumTotal = 0;
     const bals: Record<string, number> = {}; 
@@ -190,7 +188,13 @@ export default function BudgetView({ expenses, participants, baseCurrency, total
     return { calculatedTotal: sumTotal, balances: bals, debts: transactions, statsByCategory: cats, statsByPerson: pers };
   }, [expenses, activeParticipants, baseCurrency]);
 
-  // --- UI LOGIKA ---
+  const handleExport = () => {
+      let text = `🌍 Vyúčtování (${baseCurrency})\nCelkem: ${Math.round(calculatedTotal)}\n\n`;
+      if (debts.length === 0) text += "Vyrovnáno! ✅";
+      else debts.forEach(d => text += `${d.from} ➡️ ${d.to}: ${Math.round(d.amount)} ${baseCurrency}\n`);
+      navigator.clipboard.writeText(text).then(() => alert("Zkopírováno! 📋"));
+  };
+
   const handleCalcInput = (val: string) => {
     if (val === 'C') setDisplayValue("0");
     else if (val === 'back') setDisplayValue(prev => prev.length > 1 ? prev.slice(0, -1) : "0");
@@ -289,11 +293,12 @@ export default function BudgetView({ expenses, participants, baseCurrency, total
       
       {!isWizardOpen && !selectedExpense && (
         <>
-            <div className="flex justify-center mb-4">
+            <div className="flex justify-center items-center mb-4 relative">
                 <div className="bg-gray-100 p-1 rounded-xl flex">
                     <button onClick={() => setViewMode('list')} className={`px-4 py-1 text-xs font-bold rounded-lg transition ${viewMode==='list' ? 'bg-white shadow text-black' : 'text-gray-400'}`}>Přehled</button>
                     <button onClick={() => setViewMode('stats')} className={`px-4 py-1 text-xs font-bold rounded-lg transition ${viewMode==='stats' ? 'bg-white shadow text-black' : 'text-gray-400'}`}>Grafy</button>
                 </div>
+                <button onClick={handleExport} className="absolute right-0 text-blue-600 p-2 rounded-full hover:bg-blue-50"><ShareIcon /></button>
             </div>
 
             {viewMode === 'list' ? (
@@ -477,7 +482,7 @@ export default function BudgetView({ expenses, participants, baseCurrency, total
                             {displayValue} <span className="text-2xl text-gray-400 font-medium">{currency}</span>
                         </div>
                     </div>
-                    {/* OPRAVENÁ MŘÍŽKA KALKULAČKY */}
+                    {/* OPRAVENÁ MŘÍŽKA KALKULAČKY 4x5 */}
                     <div className="bg-white p-3 pb-8 grid grid-cols-4 gap-3 shadow-[0_-10px_40px_rgba(0,0,0,0.05)] border-t border-gray-200">
                         {['C', '/', '*', 'back', '7', '8', '9', '-', '4', '5', '6', '+'].map(btn => (
                             <button key={btn} onClick={() => handleCalcInput(btn)} className="aspect-square rounded-2xl bg-gray-50 hover:bg-gray-200 font-bold text-xl text-gray-700 border border-gray-100 flex items-center justify-center">
@@ -494,6 +499,8 @@ export default function BudgetView({ expenses, participants, baseCurrency, total
                         {/* 5. Řádek: 0 (široká), Tečka, Fajfka */}
                         <button onClick={() => handleCalcInput('0')} className="col-span-2 aspect-[2/1] rounded-2xl bg-white hover:bg-gray-100 font-bold text-xl text-gray-700 border border-gray-100 flex items-center justify-center">0</button>
                         <button onClick={() => handleCalcInput('.')} className="aspect-square rounded-2xl bg-white hover:bg-gray-100 font-bold text-xl text-gray-700 border border-gray-100 flex items-center justify-center">.</button>
+                        
+                        {/* Fajfka vpravo dole (Modré) */}
                         <button onClick={isSettlement ? handleSubmit : goToStep2} className="aspect-square rounded-2xl bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shadow-lg shadow-blue-200/50">
                             <CheckIcon />
                         </button>
