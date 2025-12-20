@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
+import { Outfit } from "next/font/google";
 import "./globals.css";
 
+const outfit = Outfit({ subsets: ["latin"] });
+
 export const metadata: Metadata = {
-  title: "Tripenzí App",
-  description: "Moderní cestovní aplikace",
+  title: "Tripenzí",
+  description: "Cestuj chytře.",
 };
 
 export default function RootLayout({
@@ -13,9 +16,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="cs">
-      {/* Tady přidáme suppressHydrationWarning, aby ignoroval doplňky v prohlížeči */}
-      <body className="antialiased" suppressHydrationWarning={true}>
-        {children}
+      <body className={`${outfit.className} bg-slate-50 text-slate-900 antialiased`}>
+        <div className="mx-auto max-w-md min-h-screen bg-white shadow-2xl overflow-hidden relative">
+           {children}
+        </div>
       </body>
     </html>
   );

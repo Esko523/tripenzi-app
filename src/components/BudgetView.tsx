@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 
-// --- IKONY ---
+// IKONY
 const TrashIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>;
 const BackIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>;
 const CheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>;
@@ -14,7 +14,6 @@ const ChevronDown = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" hei
 const RefreshIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>;
 const ShareIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/></svg>;
 
-// Ikony kategorií
 const FoodIcon = () => <span>🍔</span>;
 const DrinkIcon = () => <span>🍺</span>;
 const TransportIcon = () => <span>🚕</span>;
@@ -24,12 +23,10 @@ const ShopIcon = () => <span>🛒</span>;
 const SettleIcon = () => <span>🤝</span>;
 
 type SplitMethod = 'equal' | 'exact' | 'shares';
-
 type Expense = { 
   id: number; title: string; amount: number; currency: string; exchangeRate: number; payer: string; 
   category?: string; splitMethod?: SplitMethod; splitDetails?: Record<string, number>; forWhom?: string[]; isSettlement?: boolean;
 };
-
 type Participant = { id: number; name: string; };
 
 interface BudgetProps {
@@ -52,26 +49,22 @@ const CATEGORIES = [
 
 const CURRENCIES = ["CZK", "EUR", "USD", "PLN", "HRK", "GBP", "VND", "IDR", "HUF", "THB"];
 
-export default function BudgetView({ expenses, participants, baseCurrency, totalBudget, onAddExpense, onDeleteExpense }: BudgetProps) {
+export default function BudgetView({ expenses = [], participants = [], baseCurrency, totalBudget, onAddExpense, onDeleteExpense }: BudgetProps) {
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [step, setStep] = useState(1);
   const [viewMode, setViewMode] = useState<'list' | 'stats'>('list');
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
   const [filterPerson, setFilterPerson] = useState<string | null>(null);
   const [isCurrencyDropdownOpen, setIsCurrencyDropdownOpen] = useState(false);
-
-  // Live kurzy
   const [liveRates, setLiveRates] = useState<Record<string, number>>({});
   const [ratesLoading, setRatesLoading] = useState(false);
 
-  // Wizard State
   const [displayValue, setDisplayValue] = useState("0");
   const [currency, setCurrency] = useState(baseCurrency);
   const [exchangeRate, setExchangeRate] = useState(1);
   const [title, setTitle] = useState("");
   const [payer, setPayer] = useState(""); 
   const [category, setCategory] = useState("food");
-  
   const [splitMethod, setSplitMethod] = useState<SplitMethod>('equal');
   const [splitValues, setSplitValues] = useState<Record<string, number>>({});
   const [selectedEqual, setSelectedEqual] = useState<string[]>([]);
@@ -87,7 +80,6 @@ export default function BudgetView({ expenses, participants, baseCurrency, total
     setSplitValues(initialShares);
   }, [participants]);
 
-  // Načtení kurzů
   useEffect(() => {
     const fetchRates = async () => {
         setRatesLoading(true);
@@ -95,23 +87,17 @@ export default function BudgetView({ expenses, participants, baseCurrency, total
             const response = await fetch(`https://api.exchangerate-api.com/v4/latest/${baseCurrency}`);
             const data = await response.json();
             setLiveRates(data.rates);
-        } catch (error) {
-            console.error("Chyba kurzů", error);
-        } finally {
-            setRatesLoading(false);
-        }
+        } catch (error) { console.error("Chyba kurzů", error); } finally { setRatesLoading(false); }
     };
     fetchRates();
   }, [baseCurrency]);
 
   useEffect(() => {
-    if (currency === baseCurrency) {
-        setExchangeRate(1);
-    } else if (liveRates[currency]) {
-        const rate = 1 / liveRates[currency];
-        setExchangeRate(Number(rate.toFixed(4)));
-    }
+    if (currency === baseCurrency) { setExchangeRate(1); } 
+    else if (liveRates[currency]) { setExchangeRate(Number((1 / liveRates[currency]).toFixed(4))); }
   }, [currency, baseCurrency, liveRates]);
+
+  const safeExpenses = Array.isArray(expenses) ? expenses : [];
 
   const { calculatedTotal, balances, debts, statsByCategory, statsByPerson } = useMemo(() => {
     let sumTotal = 0;
@@ -121,7 +107,7 @@ export default function BudgetView({ expenses, participants, baseCurrency, total
     
     activeParticipants.forEach(p => { bals[p] = 0; pers[p] = 0; });
 
-    expenses.forEach(expense => {
+    safeExpenses.forEach(expense => {
       const rate = expense.exchangeRate || 1;
       const amountInBase = expense.amount * rate;
 
@@ -136,16 +122,16 @@ export default function BudgetView({ expenses, participants, baseCurrency, total
 
       const method = expense.splitMethod || 'equal';
       if (method === 'equal') {
-        let targets: string[] = [];
-        if (Array.isArray(expense.forWhom)) targets = expense.forWhom;
-        else if (expense.splitDetails) targets = Object.keys(expense.splitDetails);
+        let targets = expense.forWhom || (expense.splitDetails ? Object.keys(expense.splitDetails) : []);
+        if (!Array.isArray(targets)) targets = [];
+        
         const validTargets = targets.filter(t => activeParticipants.includes(t));
         const finalTargets = validTargets.length > 0 ? validTargets : activeParticipants;
         const share = amountInBase / finalTargets.length;
         
         finalTargets.forEach(person => { 
-            bals[person] -= share;
-            if(!expense.isSettlement) pers[person] += share;
+            bals[person] -= share; 
+            if(!expense.isSettlement) pers[person] += share; 
         });
       } else if (method === 'exact') {
         Object.entries(expense.splitDetails || {}).forEach(([person, val]) => { 
@@ -186,7 +172,7 @@ export default function BudgetView({ expenses, participants, baseCurrency, total
     }
 
     return { calculatedTotal: sumTotal, balances: bals, debts: transactions, statsByCategory: cats, statsByPerson: pers };
-  }, [expenses, activeParticipants, baseCurrency]);
+  }, [safeExpenses, activeParticipants, baseCurrency]);
 
   const handleExport = () => {
       let text = `🌍 Vyúčtování (${baseCurrency})\nCelkem: ${Math.round(calculatedTotal)}\n\n`;
@@ -204,7 +190,6 @@ export default function BudgetView({ expenses, participants, baseCurrency, total
 
   const calculateResult = () => {
     try {
-        // eslint-disable-next-line no-new-func
         const result = new Function('return ' + displayValue)(); 
         return Number(result) || 0;
     } catch { return 0; }
@@ -276,7 +261,7 @@ export default function BudgetView({ expenses, participants, baseCurrency, total
       else setFilterPerson(name);
   };
 
-  const filteredExpenses = expenses.slice().reverse().filter(e => {
+  const filteredExpenses = safeExpenses.slice().reverse().filter(e => {
       if (!filterPerson) return true;
       if (e.payer === filterPerson) return true;
       const method = e.splitMethod || 'equal';
@@ -290,7 +275,6 @@ export default function BudgetView({ expenses, participants, baseCurrency, total
 
   return (
     <div className="pb-24">
-      
       {!isWizardOpen && !selectedExpense && (
         <>
             <div className="flex justify-center items-center mb-4 relative">
@@ -490,24 +474,23 @@ export default function BudgetView({ expenses, participants, baseCurrency, total
                             </button>
                         ))}
                         
-                        {/* 4. Řádek: 1, 2, 3, = */}
+                        {/* 4. Řádek */}
                         <button onClick={() => handleCalcInput('1')} className="aspect-square rounded-2xl bg-white hover:bg-gray-100 font-bold text-xl text-gray-700 border border-gray-100 flex items-center justify-center">1</button>
                         <button onClick={() => handleCalcInput('2')} className="aspect-square rounded-2xl bg-white hover:bg-gray-100 font-bold text-xl text-gray-700 border border-gray-100 flex items-center justify-center">2</button>
                         <button onClick={() => handleCalcInput('3')} className="aspect-square rounded-2xl bg-white hover:bg-gray-100 font-bold text-xl text-gray-700 border border-gray-100 flex items-center justify-center">3</button>
                         <button onClick={handleEqual} className="aspect-square rounded-2xl bg-orange-100 hover:bg-orange-200 text-orange-600 font-bold text-xl border border-orange-200 flex items-center justify-center">=</button>
-
-                        {/* 5. Řádek: 0 (široká), Tečka, Fajfka */}
+                        
+                        {/* 5. Řádek */}
                         <button onClick={() => handleCalcInput('0')} className="col-span-2 aspect-[2/1] rounded-2xl bg-white hover:bg-gray-100 font-bold text-xl text-gray-700 border border-gray-100 flex items-center justify-center">0</button>
                         <button onClick={() => handleCalcInput('.')} className="aspect-square rounded-2xl bg-white hover:bg-gray-100 font-bold text-xl text-gray-700 border border-gray-100 flex items-center justify-center">.</button>
-                        
-                        {/* Fajfka vpravo dole (Modré) */}
                         <button onClick={isSettlement ? handleSubmit : goToStep2} className="aspect-square rounded-2xl bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shadow-lg shadow-blue-200/50">
                             <CheckIcon />
                         </button>
                     </div>
                 </div>
             )}
-
+            
+            {/* Krok 2 (Detaily) */}
             {step === 2 && !isSettlement && (
                 <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-gray-50">
                     <div className="text-center bg-white p-6 rounded-3xl shadow-sm border border-gray-200">
