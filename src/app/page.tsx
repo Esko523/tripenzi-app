@@ -156,28 +156,58 @@ export default function TripenziApp() {
           const isOwner = trip.owner_id === currentUser.custom_id;
           
           return (
-          <Link href={`/trip/${trip.id}`} key={trip.id} className="block">
-            <div className="bg-white rounded-3xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all cursor-pointer border border-gray-50 group relative">
-              {/* OPRAVENÉ TLAČÍTKO SMAZAT: Odstraněno group-hover:opacity, nyní je vidět stále */}
+            <Link href={`/trip/${trip.id}`} key={trip.id} className="block group">
+              {/* TENTO CONTAINER JE TEN BÍLÝ BOX OKOLO */}
+              <div className="bg-white rounded-[2rem] p-4 shadow-xl border border-slate-100 relative overflow-hidden transition-all hover:scale-[1.02] mb-6">
+        
+                {/* TLAČÍTKO NA SMAZÁNÍ (KOŠ) - Absolutně pozicované vpravo nahoře */}
               <button 
-                onClick={(e) => deleteTrip(trip.id, e)}
-                className="absolute top-4 right-4 z-10 p-2 bg-white/80 rounded-full text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                  onClick={(e) => {
+                    e.preventDefault(); // Aby se při kliku na koš neotevřel trip
+                    deleteTrip(trip.id, e);
+                  }}
+                  className="absolute top-4 right-4 z-10 w-10 h-10 flex items-center justify-center bg-white/90 backdrop-blur rounded-full text-slate-400 hover:text-red-500 transition-all shadow-sm border border-slate-100"
               >
                 <TrashIcon />
               </button>
 
-              <div className={`h-32 rounded-2xl mb-4 relative overflow-hidden ${!trip.cover_image ? `bg-gradient-to-r ${trip.color}` : ''}`} style={trip.cover_image ? { backgroundImage: `url(${trip.cover_image})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}><div className="absolute inset-0 bg-black/10 group-hover:bg-black/0 transition-colors"></div><div className="absolute bottom-3 left-3 bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-white text-xs font-medium border border-white/20">{trip.date || "Bez data"}</div></div>
-              <div className="px-1">
-                  <div className="flex justify-between items-start mb-1">
-                      <h3 className="text-lg font-bold text-gray-900">{trip.name}</h3>
-                      <span className={`text-xs px-2 py-1 rounded font-bold ${isOwner ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>{isOwner ? 'Moje' : 'Sdílené'}</span>
+                {/* BAREVNÝ BANNER S DATEM */}
+                <div className={`h-36 rounded-[1.5rem] mb-4 relative overflow-hidden ${!trip.cover_image ? `bg-gradient-to-br ${trip.color}` : ''}`}
+                    style={trip.cover_image ? { backgroundImage: `url(${trip.cover_image})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}>
+          
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent"></div>
+          
+                  <div className="absolute bottom-3 left-3 bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-xl text-white text-xs font-bold border border-white/20 flex items-center gap-2">
+                    <CalendarIcon /> {trip.date || "Bez data"}
                   </div>
-                  <div className="bg-gray-100 h-2 rounded-full overflow-hidden mt-3"><div className={`h-full rounded-full transition-all duration-500 ${trip.spent > budgetLimit && budgetLimit > 0 ? 'bg-red-500' : 'bg-gray-900'}`} style={{ width: budgetLimit > 0 ? `${Math.min((trip.spent / budgetLimit) * 100, 100)}%` : (trip.spent > 0 ? '100%' : '0%') }}></div></div><div className="flex justify-between text-xs mt-2 font-medium"><span className="text-gray-500">Útrata: {trip.spent} {currency}</span><span className="text-gray-900">Limit: {budgetLimit > 0 ? `${budgetLimit} ${currency}` : '∞'}</span></div>
+                </div>
+
+                  {/* SPODNÍ ČÁST S NÁZVEM A PROGRESS BAREM */}
+                  <div className="px-1 pb-1">
+                    <div className="flex justify-between items-start mb-3">
+                      <h3 className="text-xl font-bold text-slate-900">{trip.name}</h3>
+                      <span className={`text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-lg font-black ${isOwner ? 'bg-indigo-50 text-indigo-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                        {isOwner ? 'MOJE' : 'SDÍLENÉ'}
+                      </span>
+                    </div>
+
+                    {/* PROGRESS BAR */}
+                    <div className="bg-slate-100 h-2.5 rounded-full overflow-hidden mb-2">
+                      <div 
+                        className={`h-full rounded-full transition-all duration-1000 ${trip.spent > budgetLimit && budgetLimit > 0 ? 'bg-rose-500' : 'bg-slate-800'}`} 
+                        style={{ width: budgetLimit > 0 ? `${Math.min((trip.spent / budgetLimit) * 100, 100)}%` : '0%' }}
+                      ></div>
+                    </div>
+
+                    <div className="flex justify-between text-[11px] font-bold text-slate-500 uppercase tracking-tight">
+                      <span>Útrata: <span className="text-slate-900">{trip.spent} {currency}</span></span>
+                      <span>Limit: {budgetLimit > 0 ? `${budgetLimit} ${currency}` : '∞'}</span>
+                    </div>
               </div>
             </div>
           </Link>
-        )})}
-      </div>
+            );
+          })}
 
       <div className="fixed bottom-8 right-6 flex flex-col gap-3 z-40">
           <button onClick={() => setIsJoinModalOpen(true)} className="w-14 h-14 bg-white text-blue-600 border border-blue-100 rounded-full shadow-lg flex items-center justify-center transition-transform active:scale-90" title="Připojit se"><LinkIcon /></button>

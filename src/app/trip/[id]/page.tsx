@@ -196,11 +196,17 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
 
         <div className="p-6 flex-1">
           {activeTab === 'plan' && (
-            <div className="space-y-6 border-l-2 border-gray-100 ml-3 pl-6 relative pb-20">
-              {(trip.events || []).length === 0 && <p className="text-gray-400 text-sm italic">Zatím žádný plán.</p>}
-              {trip.events?.map((event) => (
-                <div key={event.id} className="relative group">
-                  <div className="absolute -left-[31px] top-1 w-4 h-4 bg-blue-500 rounded-full border-4 border-white shadow-sm"></div>
+            <div className="space-y-6 pb-24">
+                {trip.mapLink && (<a href={trip.mapLink} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full py-3 bg-blue-50 text-blue-700 rounded-xl font-bold border border-blue-100 mb-6 hover:bg-blue-100 transition"><MapIcon /> Otevřít mapu trasy</a>)}
+              {(trip.events || []).length === 0 && <p className="text-gray-400 text-sm italic text-center mt-10">Zatím žádný plán.</p>}
+              
+              {sortedDates.map(date => (
+                  <div key={date} className="relative">
+                      <div className="sticky top-0 bg-white/95 backdrop-blur py-2 z-10 border-b border-gray-50 mb-3"><h3 className="text-sm font-bold text-gray-800 uppercase tracking-wider flex items-center gap-2">📅 {date === 'Neurčeno' ? 'Ostatní' : new Date(date).toLocaleDateString('cs-CZ', { weekday: 'short', day: 'numeric', month: 'long' })}</h3></div>
+                      <div className="space-y-0 border-l-2 border-gray-100 ml-2 pl-4 relative">
+                          {groupedEvents[date].map((event) => (
+                            <div key={event.id} className="relative group pb-6 last:pb-0">
+                              <div className="absolute -left-[21px] top-1 w-3 h-3 bg-blue-500 rounded-full border-2 border-white shadow-sm"></div>
                   <div className="flex justify-between items-start">
                     <div><span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded mb-1 inline-block">{event.time}</span><p className="text-gray-900 font-medium">{event.title}</p></div>
                     <button onClick={() => deleteEvent(event.id)} className="text-gray-300 hover:text-red-500 opacity-100 transition-opacity"><TrashIcon /></button>
