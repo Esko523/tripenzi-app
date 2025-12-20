@@ -1,337 +1,375 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react'; // Přidán useCallback
+import React, { useState, useEffect, useCallback, use } from 'react';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabaseClient'; // <--- TOTO JE MOST K DATABÁZI
+import { useRouter } from 'next/navigation';
+import BudgetView from '@/components/BudgetView';
+import { supabase } from '@/lib/supabaseClient'; // Import Supabase
 
 // --- IKONY ---
-const PlusIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>;
-const MapPinIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>;
-const CalendarIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>;
-const TrashIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>;
-const LogOutIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>;
+const ArrowLeft = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>;
+const ClockIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
+const WalletIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>;
+const ListIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>;
+const InfoIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="16" y2="12"/><line x1="12" x2="12.01" y1="8" y2="8"/></svg>;
+const PhotoIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>;
+const SettingsIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>;
+const CheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>;
+const UsersIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
+const TrashIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>;
 
 // --- TYPY ---
-type User = {
-  id: number;       // ID v databázi (bigint)
-  custom_id: string; // Naše ID #1234
-  name: string;
+type Event = { id: number; time: string; title: string; };
+type Participant = { id: number; name: string; };
+type SplitMethod = 'equal' | 'exact' | 'shares';
+type Expense = { 
+  id: number; title: string; amount: number; currency: string; exchangeRate: number; payer: string; 
+  category?: string; splitMethod?: SplitMethod; splitDetails?: Record<string, number>; forWhom?: string[]; isSettlement?: boolean;
 };
 
-export default function TripenziApp() {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [trips, setTrips] = useState<any[]>([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newDestination, setNewDestination] = useState("");
-  const [newDate, setNewDate] = useState("");
+type Trip = { 
+  id: number; name: string; date: string; color: string; 
+  events?: Event[]; expenses?: Expense[]; participants?: Participant[];
+  budget: number; spent: number;
+  notes?: string; photoLink?: string; coverImage?: string;
+  baseCurrency?: string;
+  totalBudget?: number;
+};
+
+const GRADIENTS = [
+  "from-blue-500 to-cyan-400", "from-purple-500 to-indigo-500", "from-green-400 to-emerald-500",
+  "from-yellow-400 to-orange-500", "from-pink-500 to-rose-500", "from-gray-700 to-black",
+];
+
+const CURRENCIES = ["CZK", "EUR", "USD", "PLN", "HRK", "GBP", "VND", "IDR"];
+
+export default function TripDetail({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params);
+  const tripId = Number(resolvedParams.id);
+  const router = useRouter();
+  
+  const [trip, setTrip] = useState<Trip | null>(null);
+  const [activeTab, setActiveTab] = useState<'plan' | 'budget' | 'info' | 'settings'>('plan');
   const [loading, setLoading] = useState(true);
 
-  // Auth Stavy
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [authInputName, setAuthInputName] = useState("");
-  const [authInputID, setAuthInputID] = useState("");
-  const [authError, setAuthError] = useState("");
+  // Stavy formulářů
+  const [newEvent, setNewEvent] = useState("");
+  const [newTime, setNewTime] = useState("");
+  const [notes, setNotes] = useState("");
+  const [photoLink, setPhotoLink] = useState("");
+  const [isEditingLink, setIsEditingLink] = useState(false);
+  const [newParticipant, setNewParticipant] = useState("");
+  
+  // Settings stavy
+  const [editName, setEditName] = useState("");
+  const [editDate, setEditDate] = useState("");
+  const [editImage, setEditImage] = useState("");
+  const [editCurrency, setEditCurrency] = useState("CZK");
+  const [editBudget, setEditBudget] = useState("");
 
-  // 1. NAČTENÍ DAT (Z DATABÁZE)
-  const loadTrips = useCallback(async () => {
-    if (!currentUser) return;
+  // 1. NAČTENÍ DAT ZE SUPABASE (The Big Fetch)
+  const fetchTripData = useCallback(async () => {
+    try {
+        // A) Načíst základní info o tripu
+        const { data: tripData, error: tripError } = await supabase
+            .from('trips')
+            .select('*')
+            .eq('id', tripId)
+            .single();
 
-    // SUPABASE: Vyber všechny tripy, kde owner_id je moje ID
-    const { data, error } = await supabase
-      .from('trips')
-      .select('*')
-      .eq('owner_id', currentUser.custom_id)
-      .order('id', { ascending: false });
+        if (tripError || !tripData) {
+            console.error("Trip nenalezen:", tripError);
+            router.push('/');
+            return;
+        }
 
-    if (error) {
-      console.error("Chyba načítání tripů:", error);
-    } else {
-      // Musíme dopočítat útratu (spent), protože ta se teď počítá z tabulky expenses
-      // Pro zjednodušení na hlavní stránce zatím načteme 0, nebo bychom museli dělat složitější join.
-      // Pro teď necháme 0 a útratu vyřešíme v detailu, nebo později přidáme funkci na součet.
+        // B) Načíst účastníky
+        const { data: participantsData } = await supabase.from('participants').select('*').eq('trip_id', tripId);
+
+        // C) Načíst výdaje
+        const { data: expensesData } = await supabase.from('expenses').select('*').eq('trip_id', tripId);
+
+        // D) Načíst extra info (poznámky)
+        const { data: detailsData } = await supabase.from('trip_details').select('*').eq('trip_id', tripId).maybeSingle();
+
+        // Transformace dat z DB do našeho formátu
+        const loadedExpenses: Expense[] = (expensesData || []).map((e: any) => ({
+            id: e.id,
+            title: e.title,
+            amount: e.amount,
+            currency: e.currency,
+            exchangeRate: e.exchange_rate,
+            payer: e.payer,
+            category: e.category,
+            splitMethod: e.split_method,
+            splitDetails: e.split_details,
+            forWhom: e.for_whom,
+            isSettlement: e.is_settlement
+        }));
+
+        // Výpočet celkové útraty
+        const totalSpent = loadedExpenses.reduce((sum, item) => {
+            if (item.isSettlement) return sum;
+            const rate = item.exchangeRate || 1;
+            return sum + (item.amount * rate);
+        }, 0);
+
+        setTrip({
+            id: tripData.id,
+            name: tripData.name,
+            date: tripData.date,
+            color: tripData.color,
+            baseCurrency: tripData.base_currency,
+            totalBudget: tripData.total_budget,
+            budget: 0,
+            spent: Math.round(totalSpent),
+            coverImage: tripData.cover_image || detailsData?.cover_image, // Podpora pro starší i novou strukturu
+            notes: detailsData?.notes || "",
+            photoLink: detailsData?.photo_link || "",
+            events: [], // Plán zatím neukládáme do DB (pokud chceš, musíme přidat tabulku 'events')
+            participants: participantsData || [],
+            expenses: loadedExpenses
+        });
+
+        // Předvyplnění formulářů
+        setNotes(detailsData?.notes || "");
+        setPhotoLink(detailsData?.photo_link || "");
+        setEditName(tripData.name);
+        setEditDate(tripData.date);
+        setEditCurrency(tripData.base_currency || "CZK");
+        setEditBudget(tripData.total_budget || "");
+        setEditImage(tripData.cover_image || detailsData?.cover_image || "");
+
+    } catch (err) {
+        console.error(err);
+    } finally {
+        setLoading(false);
+    }
+  }, [tripId, router]);
+
+  useEffect(() => {
+    fetchTripData();
+  }, [fetchTripData]);
+
+
+  // --- FUNKCE PRO ÚČASTNÍKY ---
+  const addParticipant = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newParticipant || !trip) return;
+
+    const { error } = await supabase.from('participants').insert([{ trip_id: tripId, name: newParticipant }]);
+    if (!error) {
+        setNewParticipant("");
+        fetchTripData(); // Obnovit data
+    }
+  };
+
+  const deleteParticipant = async (id: number) => {
+    const { error } = await supabase.from('participants').delete().eq('id', id);
+    if (!error) fetchTripData();
+  };
+
+  // --- FUNKCE PRO VÝDAJE (PŘES SUPABASE) ---
+  const addExpense = async (expenseData: Omit<Expense, "id">) => {
+    if (!trip) return;
+
+    // Mapping na DB sloupce
+    const dbPayload = {
+        trip_id: tripId,
+        title: expenseData.title,
+        amount: expenseData.amount,
+        currency: expenseData.currency,
+        exchange_rate: expenseData.exchangeRate,
+        payer: expenseData.payer,
+        category: expenseData.category,
+        split_method: expenseData.splitMethod,
+        split_details: expenseData.splitDetails,
+        for_whom: expenseData.forWhom,
+        is_settlement: expenseData.isSettlement
+    };
+
+    const { error } = await supabase.from('expenses').insert([dbPayload]);
+    if (!error) fetchTripData();
+    else console.error(error);
+  };
+
+  const deleteExpense = async (id: number) => {
+    const { error } = await supabase.from('expenses').delete().eq('id', id);
+    if (!error) fetchTripData();
+  };
+
+  // --- OSTATNÍ UPDATE FUNKCE ---
+  const handleNoteChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setNotes(e.target.value);
+  };
+  // Uložení poznámky až po ztrátě fokusu (onBlur) nebo tlačítkem, aby se nevolala DB při každém písmenu
+  const saveDetails = async () => {
+      // Upsert: Vloží nebo aktualizuje, pokud existuje (podle trip_id, ale musíme mít constraint, ten jsme možná nevytvořili, tak raději check)
+      // Zjednodušení: zkusíme update, když nic, tak insert.
       
-      // Ale počkej! Můžeme načíst i výdaje a spočítat to rovnou tady.
-      // Uděláme to jednoduše - pro každý trip načteme sumu výdajů.
-      const tripsWithSpent = await Promise.all(data.map(async (trip) => {
-          const { data: expenses } = await supabase.from('expenses').select('amount, exchange_rate, is_settlement').eq('trip_id', trip.id);
-          const spent = expenses?.reduce((sum, item) => {
-             if (item.is_settlement) return sum;
-             return sum + (item.amount * (item.exchange_rate || 1));
-          }, 0) || 0;
-          return { ...trip, spent: Math.round(spent) };
-      }));
-
-      setTrips(tripsWithSpent);
-    }
-  }, [currentUser]);
-
-  useEffect(() => {
-    // Kontrola, zda je uživatel přihlášen (uloženo v prohlížeči jen jako session)
-    const sessionUser = localStorage.getItem("tripenzi_session");
-    if (sessionUser) {
-      setCurrentUser(JSON.parse(sessionUser));
-    }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    if (currentUser) {
-      loadTrips();
-    }
-  }, [currentUser, loadTrips]);
-
-  // Listener pro aktualizaci při návratu z detailu
-  useEffect(() => {
-      window.addEventListener("focus", loadTrips); // Když se vrátíš na záložku
-      return () => window.removeEventListener("focus", loadTrips);
-  }, [loadTrips]);
-
-
-  // --- AUTH LOGIKA (SUPABASE) ---
-
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!authInputName.trim()) return;
-    setAuthError("");
-
-    const randomId = `#${Math.floor(1000 + Math.random() * 9000)}`;
-
-    // SUPABASE: Vložit nového uživatele
-    const { data, error } = await supabase
-      .from('users')
-      .insert([{ custom_id: randomId, name: authInputName }])
-      .select()
-      .single();
-
-    if (error) {
-      setAuthError("Chyba při registraci. Zkus to znovu.");
-      console.error(error);
-    } else if (data) {
-      loginUser(data);
-    }
-  };
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!authInputID.trim()) return;
-    setAuthError("");
-
-    const searchID = authInputID.startsWith('#') ? authInputID : `#${authInputID}`;
-
-    // SUPABASE: Najít uživatele
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('custom_id', searchID)
-      .single();
-
-    if (error || !data) {
-      setAuthError("Uživatel s tímto ID neexistuje.");
-    } else {
-      loginUser(data);
-    }
-  };
-
-  const loginUser = (user: User) => {
-    setCurrentUser(user);
-    localStorage.setItem("tripenzi_session", JSON.stringify(user));
-    setAuthInputName("");
-    setAuthInputID("");
-  };
-
-  const handleLogout = () => {
-    setCurrentUser(null);
-    setTrips([]);
-    localStorage.removeItem("tripenzi_session");
-    setAuthMode("login");
-  };
-
-  // --- TRIP LOGIKA (SUPABASE) ---
-
-  const handleAddTrip = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newDestination || !newDate || !currentUser) return;
-
-    const colors = ["from-blue-500 to-cyan-400", "from-purple-500 to-indigo-500", "from-green-400 to-emerald-500", "from-yellow-400 to-orange-500", "from-pink-500 to-rose-500"];
-    const randomColor = colors[Math.floor(Math.random() * colors.length)];
-
-    // SUPABASE: Vložit nový trip
-    const { error } = await supabase
-      .from('trips')
-      .insert([{ 
-          name: newDestination, 
-          date: newDate, 
-          color: randomColor, 
-          owner_id: currentUser.custom_id,
-          base_currency: 'CZK',
-          total_budget: 0
-      }]);
-
-    if (error) {
-        alert("Chyba při vytváření tripu");
-        console.error(error);
-    } else {
-        await loadTrips(); // Znovu načíst seznam
-        setIsModalOpen(false);
-        setNewDestination("");
-        setNewDate("");
-    }
-  };
-
-  const deleteTrip = async (id: number, e: React.MouseEvent) => {
-    e.preventDefault();
-    if (confirm("Opravdu smazat tento trip?")) {
-      // SUPABASE: Smazat trip (díky cascade se smažou i výdaje)
-      const { error } = await supabase.from('trips').delete().eq('id', id);
+      const { data } = await supabase.from('trip_details').select('id').eq('trip_id', tripId).maybeSingle();
       
-      if (error) {
-          alert("Chyba při mazání");
+      if (data) {
+          await supabase.from('trip_details').update({ notes, photo_link: photoLink }).eq('trip_id', tripId);
       } else {
-          loadTrips();
+          await supabase.from('trip_details').insert([{ trip_id: tripId, notes, photo_link: photoLink }]);
       }
+  };
+
+  const handleUpdateSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const { error } = await supabase.from('trips').update({
+        name: editName,
+        date: editDate,
+        base_currency: editCurrency,
+        total_budget: editBudget ? Number(editBudget) : 0,
+        cover_image: editImage, // Ukládáme i do trips tabulky
+    }).eq('id', tripId);
+
+    if (!error) {
+        alert("Nastavení uloženo! ✅");
+        fetchTripData();
     }
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50">Načítám...</div>;
+  const changeColor = async (newColor: string) => {
+      const { error } = await supabase.from('trips').update({ color: newColor, cover_image: null }).eq('id', tripId);
+      if (!error) {
+          setEditImage("");
+          fetchTripData();
+      }
+  };
 
-  // --- 1. OBRAZOVKA: LOGIN / REGISTER ---
-  if (!currentUser) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gray-50 font-sans">
-        <div className="w-full max-w-sm bg-white p-8 rounded-3xl shadow-xl border border-gray-100">
-          
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-black text-gray-900 mb-2">Tripenzí</h1>
-            <p className="text-gray-500 text-sm">Online & Offline Sync ☁️</p>
-          </div>
+  // PLÁN (lokální state pro demo, v budoucnu přidat tabulku events)
+  const addEvent = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newEvent || !newTime || !trip) return;
+    const event = { id: Date.now(), time: newTime, title: newEvent };
+    const updatedEvents = [...(trip.events || []), event].sort((a,b) => a.time.localeCompare(b.time));
+    setTrip({...trip, events: updatedEvents}); // Pouze lokálně
+    setNewEvent(""); setNewTime("");
+  };
+  const deleteEvent = (id: number) => {
+      if(!trip) return;
+      setTrip({...trip, events: trip.events?.filter(e => e.id !== id)});
+  };
 
-          <div className="flex bg-gray-100 p-1 rounded-xl mb-6">
-            <button onClick={() => {setAuthMode('login'); setAuthError('');}} className={`flex-1 py-2 text-sm font-bold rounded-lg transition ${authMode === 'login' ? 'bg-white shadow text-black' : 'text-gray-400'}`}>Přihlásit</button>
-            <button onClick={() => {setAuthMode('register'); setAuthError('');}} className={`flex-1 py-2 text-sm font-bold rounded-lg transition ${authMode === 'register' ? 'bg-white shadow text-black' : 'text-gray-400'}`}>Vytvořit účet</button>
-          </div>
 
-          {authMode === 'login' && (
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Tvoje ID</label>
-                <input type="text" value={authInputID} onChange={(e) => setAuthInputID(e.target.value)} placeholder="#1234" className="w-full bg-gray-50 border-2 border-gray-200 rounded-xl p-4 text-center font-mono text-xl font-bold tracking-widest focus:outline-blue-500 uppercase placeholder-gray-300" />
-              </div>
-              {authError && <p className="text-red-500 text-xs text-center font-bold">{authError}</p>}
-              <button type="submit" className="w-full bg-black text-white py-4 rounded-xl font-bold text-lg shadow-lg hover:bg-gray-800 transition active:scale-95">Vstoupit</button>
-            </form>
-          )}
+  if (loading || !trip) return <div className="p-10 text-center flex justify-center items-center h-screen"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div></div>;
 
-          {authMode === 'register' && (
-            <form onSubmit={handleRegister} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Jak ti říkají?</label>
-                <input type="text" value={authInputName} onChange={(e) => setAuthInputName(e.target.value)} placeholder="Např. Lukáš" className="w-full bg-gray-50 border border-gray-200 rounded-xl p-4 font-bold text-lg focus:outline-blue-500" />
-              </div>
-              <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-100 text-yellow-800 text-xs">ℹ️ Vygenerujeme ti unikátní <strong>ID</strong>, které bude uloženo v cloudu.</div>
-              <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-lg shadow-lg hover:bg-blue-700 transition active:scale-95">Získat ID a vstoupit</button>
-            </form>
-          )}
-        </div>
-      </div>
-    );
-  }
+  const headerStyle = trip.coverImage ? { backgroundImage: `url(${trip.coverImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {};
+  const headerClass = trip.coverImage ? "relative text-white" : `bg-gradient-to-r ${trip.color} text-white relative`;
 
-  // --- 2. OBRAZOVKA: DASHBOARD ---
   return (
-    <div className="min-h-screen pb-24 font-sans max-w-md mx-auto relative overflow-hidden">
+    <div className="min-h-screen bg-gray-50 pb-24 font-sans max-w-md mx-auto relative">
       
       {/* HLAVIČKA */}
-      <header className="pt-12 pb-6 px-6">
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <p className="text-gray-500 text-sm font-medium uppercase tracking-wider">Ahoj, {currentUser.name}</p>
-            <h1 className="text-3xl font-bold text-gray-900">Moje Cesty</h1>
-          </div>
-          <div className="flex items-center gap-2">
-             <div className="bg-gray-100 px-3 py-1 rounded-full text-xs font-mono font-bold text-gray-600 border border-gray-200">{currentUser.custom_id}</div>
-             <button onClick={handleLogout} className="w-10 h-10 rounded-full bg-gray-200 hover:bg-red-100 hover:text-red-600 border-2 border-white shadow-sm flex items-center justify-center transition"><LogOutIcon /></button>
-          </div>
-        </div>
-      </header>
-
-      {/* SEZNAM CEST */}
-      <div className="px-6 space-y-5">
-        {trips.length === 0 && (
-          <div className="text-center text-gray-400 py-10"><p>Zatím žádné plány... 🌍</p><p className="text-xs mt-2">Data se ukládají online!</p></div>
-        )}
-
-        {trips.map((trip) => {
-          const budgetLimit = Number(trip.total_budget) || 0;
-          const currency = trip.base_currency || "CZK";
-          
-          return (
-          <Link href={`/trip/${trip.id}`} key={trip.id} className="block">
-            <div className="bg-white rounded-3xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all cursor-pointer border border-gray-50 group relative">
-              
-              <button 
-                onClick={(e) => deleteTrip(trip.id, e)}
-                className="absolute top-4 right-4 z-10 p-2 bg-white/80 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-100 hover:text-red-600"
-              >
-                <TrashIcon />
-              </button>
-
-              <div 
-                className={`h-32 rounded-2xl mb-4 relative overflow-hidden ${!trip.cover_image ? `bg-gradient-to-r ${trip.color}` : ''}`}
-                style={trip.cover_image ? { backgroundImage: `url(${trip.cover_image})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}
-              >
-                <div className="absolute inset-0 bg-black/10 group-hover:bg-black/0 transition-colors"></div>
-                <div className="absolute bottom-3 left-3 bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-white text-xs font-medium border border-white/20">
-                   {trip.date || "Bez data"}
-                </div>
-              </div>
-
-              <div className="px-1">
-                <div className="flex justify-between items-start mb-1">
-                  <h3 className="text-lg font-bold text-gray-900">{trip.name}</h3>
-                  <span className="text-xs bg-gray-100 px-2 py-1 rounded font-bold text-gray-600">Online</span>
-                </div>
-                
-                <div className="flex items-center gap-4 text-sm text-gray-500 mb-4">
-                  <div className="flex items-center gap-1"><CalendarIcon /> {trip.date}</div>
-                </div>
-
-                <div className="bg-gray-100 h-2 rounded-full overflow-hidden">
-                  <div className={`h-full rounded-full transition-all duration-500 ${trip.spent > budgetLimit && budgetLimit > 0 ? 'bg-red-500' : 'bg-gray-900'}`} style={{ width: budgetLimit > 0 ? `${Math.min((trip.spent / budgetLimit) * 100, 100)}%` : (trip.spent > 0 ? '100%' : '0%') }}></div>
-                </div>
-                <div className="flex justify-between text-xs mt-2 font-medium">
-                  <span className="text-gray-500">Útrata: {trip.spent} {currency}</span>
-                  <span className="text-gray-900">Limit: {budgetLimit > 0 ? `${budgetLimit} ${currency}` : '∞'}</span>
-                </div>
-              </div>
+      <div className={`${headerClass} p-6 pb-16 transition-all duration-500`} style={headerStyle}>
+        {trip.coverImage && <div className="absolute inset-0 bg-black/40"></div>}
+        <div className="relative z-10">
+            <div className="mb-6 flex justify-between items-center">
+                <Link href="/" className="p-2 bg-white/20 rounded-full hover:bg-white/30 transition backdrop-blur-md inline-flex"><ArrowLeft /></Link>
+                <div className="bg-green-500/80 px-2 py-1 rounded text-[10px] font-bold text-white flex items-center gap-1">Online ☁️</div>
             </div>
-          </Link>
-        )})}
+            <div>
+                <h1 className="text-3xl font-bold drop-shadow-md">{trip.name}</h1>
+                <p className="opacity-95 flex items-center gap-2 text-sm mt-1 drop-shadow-sm font-medium"><ClockIcon /> {trip.date}</p>
+                <div className="mt-4 flex items-center gap-4 text-sm font-medium bg-black/30 p-2 rounded-lg inline-flex backdrop-blur-md border border-white/10"><span>💰 Útrata: {trip.spent} {trip.baseCurrency}</span></div>
+            </div>
+        </div>
       </div>
 
-      <button onClick={() => setIsModalOpen(true)} className="fixed bottom-8 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg shadow-blue-600/30 flex items-center justify-center transition-transform active:scale-90 z-40"><PlusIcon /></button>
-
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
-          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl relative z-10 animate-in fade-in zoom-in duration-200">
-            <h2 className="text-xl font-bold text-gray-900 mb-6 text-center">Nový Trip</h2>
-            <form onSubmit={handleAddTrip} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1 ml-1">Destinace</label>
-                <div className="relative"><span className="absolute left-3 top-3 text-gray-400"><MapPinIcon /></span><input type="text" value={newDestination} onChange={(e) => setNewDestination(e.target.value)} placeholder="Např. Paříž" className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-10 focus:outline-none focus:ring-2 focus:ring-blue-500" autoFocus /></div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1 ml-1">Kdy?</label>
-                <div className="relative"><span className="absolute left-3 top-3 text-gray-400"><CalendarIcon /></span><input type="text" value={newDate} onChange={(e) => setNewDate(e.target.value)} placeholder="Např. 15. Července" className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-10 focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
-              </div>
-              <div className="pt-4 flex gap-3">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 text-gray-600 font-semibold rounded-xl hover:bg-gray-100">Zrušit</button>
-                <button type="submit" className="flex-1 py-3 bg-blue-600 text-white font-semibold rounded-xl shadow-lg hover:bg-blue-700">Vytvořit</button>
-              </div>
-            </form>
-          </div>
+      <div className="-mt-8 bg-white rounded-t-3xl min-h-screen relative z-10 flex flex-col">
+        <div className="flex border-b border-gray-100">
+          <button onClick={() => setActiveTab('plan')} className={`flex-1 py-4 text-[10px] font-bold flex flex-col items-center gap-1 ${activeTab === 'plan' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400'}`}><ListIcon /> PLÁN</button>
+          <button onClick={() => setActiveTab('budget')} className={`flex-1 py-4 text-[10px] font-bold flex flex-col items-center gap-1 ${activeTab === 'budget' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400'}`}><WalletIcon /> ROZPOČET</button>
+          <button onClick={() => setActiveTab('info')} className={`flex-1 py-4 text-[10px] font-bold flex flex-col items-center gap-1 ${activeTab === 'info' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400'}`}><InfoIcon /> INFO</button>
+          <button onClick={() => setActiveTab('settings')} className={`flex-1 py-4 text-[10px] font-bold flex flex-col items-center gap-1 ${activeTab === 'settings' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400'}`}><SettingsIcon /> NASTAVENÍ</button>
         </div>
-      )}
+
+        <div className="p-6 flex-1">
+          {activeTab === 'plan' && (
+            <div className="space-y-6 border-l-2 border-gray-100 ml-3 pl-6 relative pb-20">
+              <div className="text-center text-xs text-gray-400 mb-4 bg-yellow-50 p-2 rounded">⚠️ Plán se zatím ukládá jen dočasně.</div>
+              {(trip.events || []).length === 0 && <p className="text-gray-400 text-sm italic">Zatím žádný plán.</p>}
+              {trip.events?.map((event) => (
+                <div key={event.id} className="relative group">
+                  <div className="absolute -left-[31px] top-1 w-4 h-4 bg-blue-500 rounded-full border-4 border-white shadow-sm"></div>
+                  <div className="flex justify-between items-start">
+                    <div><span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded mb-1 inline-block">{event.time}</span><p className="text-gray-900 font-medium">{event.title}</p></div>
+                    <button onClick={() => deleteEvent(event.id)} className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><TrashIcon /></button>
+                  </div>
+                </div>
+              ))}
+              <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-100 max-w-md mx-auto z-20">
+                <form onSubmit={addEvent} className="flex gap-2">
+                  <input type="time" value={newTime} onChange={e => setNewTime(e.target.value)} className="bg-gray-100 rounded-xl px-3 py-3 font-bold text-sm focus:outline-blue-500" required />
+                  <input type="text" value={newEvent} onChange={e => setNewEvent(e.target.value)} placeholder="Co podniknem?" className="bg-gray-100 rounded-xl px-4 py-3 flex-1 text-sm focus:outline-blue-500" required />
+                  <button type="submit" className="bg-blue-600 text-white w-12 rounded-xl flex items-center justify-center hover:bg-blue-700 shadow-lg font-bold text-xl">+</button>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'budget' && (
+            <BudgetView 
+              expenses={trip.expenses || []}
+              participants={trip.participants || []}
+              baseCurrency={trip.baseCurrency || "CZK"}
+              totalBudget={trip.totalBudget || 0}
+              onAddExpense={addExpense}
+              onDeleteExpense={deleteExpense}
+            />
+          )}
+
+          {activeTab === 'info' && (
+            <div className="space-y-6">
+              <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
+                <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2"><UsersIcon /> Účastníci</h3>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {(trip.participants || []).length === 0 && <p className="text-gray-400 text-sm italic w-full">Zatím nikdo připsaný.</p>}
+                  {trip.participants?.map((participant) => (
+                    <div key={participant.id} className="bg-blue-50 text-blue-800 px-3 py-1 rounded-full text-sm font-bold flex items-center gap-2 border border-blue-100">
+                      {participant.name} <button onClick={() => deleteParticipant(participant.id)} className="text-blue-300 hover:text-red-500 text-xs font-bold">×</button>
+                    </div>
+                  ))}
+                </div>
+                <form onSubmit={addParticipant} className="flex gap-2">
+                    <input type="text" value={newParticipant} onChange={(e) => setNewParticipant(e.target.value)} placeholder="Přidat jméno..." className="bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm flex-1 focus:outline-blue-500" />
+                    <button type="submit" className="bg-blue-600 text-white px-4 rounded-lg text-sm font-bold hover:bg-blue-700">+</button>
+                </form>
+              </div>
+              <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
+                <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2"><PhotoIcon /> Sdílené fotky</h3>
+                <div className="flex gap-2"><input type="text" value={photoLink} onChange={(e) => setPhotoLink(e.target.value)} placeholder="Vlož odkaz na Google Photos..." className="bg-gray-50 border border-gray-200 rounded-lg p-2 text-sm flex-1 focus:outline-blue-500" /><button onClick={saveDetails} className="bg-blue-600 text-white px-4 rounded-lg text-sm font-bold hover:bg-blue-700">Uložit</button></div>
+                {trip.photoLink && (
+                  <div className="mt-2"><a href={trip.photoLink} target="_blank" rel="noreferrer" className="block bg-gradient-to-r from-purple-500 to-pink-500 text-white p-3 rounded-xl text-center font-bold shadow-md hover:opacity-90 transition">📸 Otevřít Galerii</a></div>
+                )}
+              </div>
+              <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-4 shadow-sm"><h3 className="font-bold text-yellow-800 mb-2">📝 Důležité poznámky</h3>
+              <textarea value={notes} onChange={handleNoteChange} onBlur={saveDetails} placeholder="Zde si napiš kód od wifi, adresu..." className="w-full bg-transparent text-sm text-gray-800 placeholder-gray-400 focus:outline-none h-40 resize-none" />
+              <p className="text-[10px] text-yellow-600 mt-1 text-right">Ukládá se automaticky po dopsání</p>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'settings' && (
+            <div className="space-y-6">
+              <h2 className="text-lg font-bold text-gray-800">Upravit Trip</h2>
+              <form onSubmit={handleUpdateSettings} className="space-y-4">
+                <div><label className="block text-xs font-bold text-gray-500 mb-1">NÁZEV CESTY</label><input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 font-bold focus:outline-blue-500" /></div>
+                <div><label className="block text-xs font-bold text-gray-500 mb-1">TERMÍN (TEXT)</label><input type="text" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:outline-blue-500" /></div>
+                <div><label className="block text-xs font-bold text-gray-500 mb-1">CELKOVÝ ROZPOČET</label><input type="number" value={editBudget} onChange={(e) => setEditBudget(e.target.value)} placeholder="0" className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 font-bold focus:outline-blue-500" /></div>
+                <div><label className="block text-xs font-bold text-gray-500 mb-1">HLAVNÍ MĚNA</label><div className="flex flex-wrap gap-2">{CURRENCIES.map(c => (<button type="button" key={c} onClick={() => setEditCurrency(c)} className={`px-3 py-1 rounded-lg border text-sm font-bold ${editCurrency === c ? 'bg-black text-white' : 'bg-white text-gray-500'}`}>{c}</button>))}</div></div>
+                <div><label className="block text-xs font-bold text-gray-500 mb-1">OBRÁZEK POZADÍ (URL)</label><input type="text" value={editImage} onChange={(e) => setEditImage(e.target.value)} placeholder="https://..." className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm focus:outline-blue-500" /></div>
+                <hr className="border-gray-100" />
+                <div><label className="block text-xs font-bold text-gray-500 mb-2">NEBO VYBER BARVU</label><div className="grid grid-cols-3 gap-2">{GRADIENTS.map((gradient) => (<button key={gradient} type="button" onClick={() => changeColor(gradient)} className={`h-12 rounded-lg bg-gradient-to-r ${gradient} flex items-center justify-center transform hover:scale-105 transition`}>{trip.color === gradient && !editImage && <div className="text-white drop-shadow-md"><CheckIcon /></div>}</button>))}</div></div>
+                <button type="submit" className="w-full py-4 bg-black text-white rounded-xl font-bold text-lg mt-4 shadow-lg hover:bg-gray-800 transition">ULOŽIT ZMĚNY</button>
+              </form>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
