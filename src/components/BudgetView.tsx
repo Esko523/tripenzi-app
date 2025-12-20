@@ -50,6 +50,7 @@ const CATEGORIES = [
 ];
 
 const CURRENCIES = ["CZK", "EUR", "USD", "PLN", "HRK", "GBP", "VND", "IDR", "HUF", "THB"];
+const DEFAULT_RATES: Record<string, number> = { "CZK": 1, "EUR": 25.50, "USD": 23.80, "PLN": 5.90, "HRK": 3.35, "GBP": 30.10, "VND": 0.001, "IDR": 0.0015 };
 
 export default function BudgetView({ expenses, participants, baseCurrency, totalBudget, onAddExpense, onDeleteExpense }: BudgetProps) {
   const [isWizardOpen, setIsWizardOpen] = useState(false);
@@ -86,7 +87,7 @@ export default function BudgetView({ expenses, participants, baseCurrency, total
     setSplitValues(initialShares);
   }, [participants]);
 
-  // 1. NAČTENÍ ŽIVÝCH KURZŮ
+  // Načtení kurzů
   useEffect(() => {
     const fetchRates = async () => {
         setRatesLoading(true);
@@ -95,7 +96,7 @@ export default function BudgetView({ expenses, participants, baseCurrency, total
             const data = await response.json();
             setLiveRates(data.rates);
         } catch (error) {
-            console.error("Chyba při stahování kurzů", error);
+            console.error("Chyba kurzů", error);
         } finally {
             setRatesLoading(false);
         }
@@ -103,7 +104,7 @@ export default function BudgetView({ expenses, participants, baseCurrency, total
     fetchRates();
   }, [baseCurrency]);
 
-  // 2. VÝPOČET KURZU
+  // Výpočet kurzu
   useEffect(() => {
     if (currency === baseCurrency) {
         setExchangeRate(1);
@@ -171,7 +172,6 @@ export default function BudgetView({ expenses, participants, baseCurrency, total
       }
     });
 
-    // Minimalizace dluhů
     let debtors = Object.entries(bals).filter(([, b]) => b < -0.1).sort(([, a], [, b]) => a - b);
     let creditors = Object.entries(bals).filter(([, b]) => b > 0.1).sort(([, a], [, b]) => b - a);
     const transactions = [];
@@ -321,7 +321,7 @@ export default function BudgetView({ expenses, participants, baseCurrency, total
                                     <button key={name} onClick={() => handleFilterPerson(name)} className={`flex flex-col items-center min-w-[70px] p-2 rounded-xl border transition ${filterPerson === name ? 'bg-gray-100 border-gray-400' : 'bg-white border-gray-100'}`}>
                                         <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold mb-1 ${filterPerson === name ? 'bg-black text-white' : 'bg-gray-100 text-gray-600'}`}>{name.charAt(0)}</div>
                                         <span className="text-[10px] font-bold text-gray-900">{name}</span>
-                                        <span className={`text-[10px] font-bold ${isZero ? 'text-gray-800' : isPlus ? 'text-green-600' : 'text-red-500'}`}>
+                                        <span className={`text-[10px] font-bold ${isZero ? 'text-black' : isPlus ? 'text-green-600' : 'text-red-500'}`}>
                                             {isZero ? '0' : (isPlus ? '+' : '') + Math.round(bal)}
                                         </span>
                                     </button>
@@ -477,20 +477,23 @@ export default function BudgetView({ expenses, participants, baseCurrency, total
                             {displayValue} <span className="text-2xl text-gray-400 font-medium">{currency}</span>
                         </div>
                     </div>
-                    {/* OPRAVENÝ LAYOUT KALKULAČKY 4x5 */}
+                    {/* OPRAVENÁ MŘÍŽKA KALKULAČKY */}
                     <div className="bg-white p-3 pb-8 grid grid-cols-4 gap-3 shadow-[0_-10px_40px_rgba(0,0,0,0.05)] border-t border-gray-200">
-                        {['C', '/', '*', 'back', '7', '8', '9', '-', '4', '5', '6', '+', '1', '2', '3'].map(btn => (
+                        {['C', '/', '*', 'back', '7', '8', '9', '-', '4', '5', '6', '+'].map(btn => (
                             <button key={btn} onClick={() => handleCalcInput(btn)} className="aspect-square rounded-2xl bg-gray-50 hover:bg-gray-200 font-bold text-xl text-gray-700 border border-gray-100 flex items-center justify-center">
                                 {btn === 'back' ? <BackspaceIcon /> : btn}
                             </button>
                         ))}
-                        {/* 4. Řádek - Nula, Tečka, Rovná se, Další */}
-                        <button onClick={() => handleCalcInput('=')} className="aspect-square rounded-2xl bg-orange-100 hover:bg-orange-200 text-orange-600 font-bold text-xl border border-orange-200 flex items-center justify-center" onClick={handleEqual}>=</button>
                         
-                        <button onClick={() => handleCalcInput('0')} className="col-span-2 aspect-[2/1] rounded-2xl bg-gray-50 hover:bg-gray-200 font-bold text-xl text-gray-700 border border-gray-100 flex items-center justify-center">0</button>
-                        <button onClick={() => handleCalcInput('.')} className="aspect-square rounded-2xl bg-gray-50 hover:bg-gray-200 font-bold text-xl text-gray-700 border border-gray-100 flex items-center justify-center">.</button>
-                        
-                        {/* Fajfka vpravo dole (Modré) */}
+                        {/* 4. Řádek: 1, 2, 3, = */}
+                        <button onClick={() => handleCalcInput('1')} className="aspect-square rounded-2xl bg-white hover:bg-gray-100 font-bold text-xl text-gray-700 border border-gray-100 flex items-center justify-center">1</button>
+                        <button onClick={() => handleCalcInput('2')} className="aspect-square rounded-2xl bg-white hover:bg-gray-100 font-bold text-xl text-gray-700 border border-gray-100 flex items-center justify-center">2</button>
+                        <button onClick={() => handleCalcInput('3')} className="aspect-square rounded-2xl bg-white hover:bg-gray-100 font-bold text-xl text-gray-700 border border-gray-100 flex items-center justify-center">3</button>
+                        <button onClick={handleEqual} className="aspect-square rounded-2xl bg-orange-100 hover:bg-orange-200 text-orange-600 font-bold text-xl border border-orange-200 flex items-center justify-center">=</button>
+
+                        {/* 5. Řádek: 0 (široká), Tečka, Fajfka */}
+                        <button onClick={() => handleCalcInput('0')} className="col-span-2 aspect-[2/1] rounded-2xl bg-white hover:bg-gray-100 font-bold text-xl text-gray-700 border border-gray-100 flex items-center justify-center">0</button>
+                        <button onClick={() => handleCalcInput('.')} className="aspect-square rounded-2xl bg-white hover:bg-gray-100 font-bold text-xl text-gray-700 border border-gray-100 flex items-center justify-center">.</button>
                         <button onClick={isSettlement ? handleSubmit : goToStep2} className="aspect-square rounded-2xl bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shadow-lg shadow-blue-200/50">
                             <CheckIcon />
                         </button>
