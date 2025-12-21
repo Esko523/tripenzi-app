@@ -76,24 +76,31 @@ export default function TripenziApp() {
       return { text: "🏁 Skončilo", style: baseStyle };
   };
 
-  // --- FUNKCE NAČÍTÁNÍ DAT (S OFFLINE CACHE) ---
   const loadTrips = useCallback(async () => {
     if (!currentUser) return;
 
-    // 1. NEJPRVE NAČTEME Z LOKÁLNÍ PAMĚTI (OFFLINE DATA)
-    const cachedTrips = localStorage.getItem(`trips_cache_${currentUser.custom_id}`);
+    // --- ZDE JE TEN VÝPIS PRO DEBUGGING ---
+    const cacheKey = `trips_cache_${currentUser.custom_id}`;
+    console.log("🔍 [DEBUG] Hledám v Cache pod klíčem:", cacheKey);
+
+    // 1. ZKUSÍME NAČÍST Z CACHE
+    const cachedTrips = localStorage.getItem(cacheKey);
+    
     if (cachedTrips) {
-        console.log("⚡ Načítám tripy z cache (offline podpora)");
+        console.log("✅ [DEBUG] Našel jsem data v Cache:", JSON.parse(cachedTrips));
         setTrips(JSON.parse(cachedTrips));
-        setLoading(false); // Zobrazíme obsah hned, nečekáme na síť
+        setLoading(false); 
+    } else {
+        console.log("❌ [DEBUG] V Cache nic není pro tento klíč.");
     }
 
-    // 2. PAK ZKUSÍME STÁHNOUT ČERSTVÁ DATA ZE SERVERU
+    // 2. ZKUSÍME ONLINE
     try {
         const { data: memberData } = await supabase.from('trip_members').select('trip_id').eq('user_id', currentUser.custom_id);
         if (!memberData || memberData.length === 0) { 
+            console.log("☁️ [ONLINE] Uživatel nemá žádné tripy na serveru.");
             setTrips([]); 
-            localStorage.removeItem(`trips_cache_${currentUser.custom_id}`);
+            localStorage.removeItem(cacheKey);
             return; 
         }
         
@@ -110,12 +117,12 @@ export default function TripenziApp() {
                 return { ...trip, spent: Math.round(spent) };
             }));
             
-            // 3. ULOŽÍME ČERSTVÁ DATA DO CACHE PRO PŘÍŠTĚ
+            console.log("💾 [SAVE] Ukládám nová data do Cache:", cacheKey);
             setTrips(tripsWithSpent);
-            localStorage.setItem(`trips_cache_${currentUser.custom_id}`, JSON.stringify(tripsWithSpent));
+            localStorage.setItem(cacheKey, JSON.stringify(tripsWithSpent));
         }
     } catch (e) {
-        console.log("⚠️ Jsem offline nebo chyba sítě, zůstávají zobrazena data z cache.");
+        console.log("⚠️ [OFFLINE] Chyba sítě, spoléhám na cache.");
     } finally {
         setLoading(false);
     }
