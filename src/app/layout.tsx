@@ -16,7 +16,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="cs">
-      <body className={`${outfit.className} bg-slate-50 text-slate-900 antialiased`}>
+      <body 
+        className={`${outfit.className} bg-slate-50 text-slate-900 antialiased`}
+        suppressHydrationWarning={true} 
+      >
         <div className="mx-auto max-w-md min-h-screen bg-white shadow-2xl overflow-hidden relative">
            {children}
         </div>

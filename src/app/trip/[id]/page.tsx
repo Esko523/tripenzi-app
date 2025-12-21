@@ -7,9 +7,10 @@ import BudgetView from '@/components/BudgetView';
 import SettingsView from '@/components/SettingsView';
 import PlanView from '@/components/PlanView';
 import InfoView from '@/components/InfoView';
+import WeatherWidget from '@/components/WeatherWidget'; // UJISTI SE, ŽE JE TO IMPORTOLVANÉ
 import { supabase } from '@/lib/supabaseClient';
 
-// --- HLAVNÍ IKONY ---
+// --- HLAVNÍ IKONY (Zůstávají stejné) ---
 const ArrowLeft = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>;
 const ClockIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
 const ListIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>;
@@ -17,7 +18,6 @@ const WalletIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" heig
 const InfoIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="16" y2="12"/><line x1="12" x2="12.01" y1="8" y2="8"/></svg>;
 const SettingsIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>;
 
-// ZMĚNA: Přidáno location do typu Event
 type Event = { id: number; time: string; title: string; location?: string; date?: string; color?: string; };
 type Participant = { id: number; name: string; };
 type SplitMethod = 'equal' | 'exact' | 'shares';
@@ -38,7 +38,10 @@ type Trip = {
   totalBudget?: number;
   shareCode?: string;
   mapLink?: string;
+  weatherLocation?: string; // TOTO JE DŮLEŽITÉ
 };
+
+const DOT_COLORS = ["bg-blue-500", "bg-red-500", "bg-green-500", "bg-yellow-500", "bg-purple-500", "bg-slate-500"];
 
 export default function TripDetail({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
@@ -49,6 +52,15 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
   const [activeTab, setActiveTab] = useState<'plan' | 'budget' | 'info' | 'settings'>('plan');
   const [trip, setTrip] = useState<Trip | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Stavy pro Plán a Info
+  const [newEventTitle, setNewEventTitle] = useState("");
+  const [newEventTime, setNewEventTime] = useState("");
+  const [newEventDate, setNewEventDate] = useState("");
+  const [newEventColor, setNewEventColor] = useState("bg-blue-500");
+  const [notes, setNotes] = useState("");
+  const [photoLink, setPhotoLink] = useState("");
+  const [newParticipant, setNewParticipant] = useState("");
 
   useEffect(() => {
       const tabParam = searchParams.get('tab');
@@ -104,6 +116,7 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
             totalBudget: tripData.total_budget,
             shareCode: tripData.share_code,
             mapLink: tripData.map_link,
+            weatherLocation: tripData.weather_location, // ZDE SE NAČÍTÁ LOKALITA
             budget: 0,
             spent: Math.round(totalSpent),
             coverImage: tripData.cover_image,
@@ -113,6 +126,11 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
             participants: participantsData || [],
             expenses: loadedExpenses
         });
+
+        setNotes(detailsData?.notes || "");
+        setPhotoLink(detailsData?.photo_link || "");
+        const today = new Date().toISOString().split('T')[0];
+        setNewEventDate(tripData.start_date || today);
 
     } catch (err) { console.error(err); } finally { setLoading(false); }
   }, [shareCodeParam, router]);
@@ -128,10 +146,9 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
   
   const saveDetails = async (notes: string, photoLink: string) => { if(!trip) return; const { data } = await supabase.from('trip_details').select('id').eq('trip_id', trip.id).maybeSingle(); if (data) await supabase.from('trip_details').update({ notes, photo_link: photoLink }).eq('trip_id', trip.id); else await supabase.from('trip_details').insert([{ trip_id: trip.id, notes, photo_link: photoLink }]); };
   
-  // ZMĚNA: Přidání location do addEvent a editEvent
   const addEvent = async (event: { title: string, location: string, time: string, date: string, color: string }) => { if (!trip) return; await supabase.from('events').insert([{ trip_id: trip.id, ...event }]); fetchTripData(); };
-  const editEvent = async (id: number, updatedData: { title: string, location: string, time: string, date: string, color: string }) => { await supabase.from('events').update(updatedData).eq('id', id); fetchTripData(); };
   const deleteEvent = async (id: number) => { await supabase.from('events').delete().eq('id', id); fetchTripData(); };
+  const editEvent = async (id: number, updatedData: { title: string, location: string, time: string, date: string, color: string }) => { await supabase.from('events').update(updatedData).eq('id', id); fetchTripData(); };
 
   const handleUpdateTripFromSettings = async (updatedData: any) => {
       if(!trip) return;
@@ -171,7 +188,15 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
             </div>
             <div>
                 <h1 className="text-3xl font-bold drop-shadow-md">{trip.name}</h1>
-                <p className="opacity-95 flex items-center gap-2 text-sm mt-1 drop-shadow-sm font-medium"><ClockIcon /> {trip.dateFormatted}</p>
+                
+                <div className="flex items-center gap-2 mt-2">
+                    <div className="bg-black/20 backdrop-blur-md px-3 py-1 rounded-lg text-[10px] font-bold border border-white/10 text-white flex items-center gap-1.5 width-fit">
+                        <ClockIcon /> {trip.dateFormatted}
+                    </div>
+                    {/* WIDGET POČASÍ - Zobrazí se, pokud je weatherLocation nastavené */}
+                    <WeatherWidget city={trip.weatherLocation} />
+                </div>
+
                 <div className="mt-4 flex items-center gap-4 text-sm font-medium bg-black/30 p-2 rounded-lg inline-flex backdrop-blur-md border border-white/10"><span>💰 Útrata: {trip.spent} {trip.baseCurrency}</span></div>
             </div>
         </div>

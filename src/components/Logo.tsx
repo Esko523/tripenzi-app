@@ -1,27 +1,29 @@
 import React from 'react';
 
-export default function Logo({ size = "normal" }: { size?: "small" | "normal" | "large" }) {
-  const sizeClasses = {
-    small: "text-xl",
-    normal: "text-2xl",
-    large: "text-4xl"
+// Varianta A: Společná cesta (Pin + Přátelé) - S většími mezerami v textu
+export default function Logo({ size = 'normal', className = '' }: { size?: 'small' | 'normal' | 'large', className?: string }) {
+  const sizes = {
+    small: { wrap: 'gap-1', icon: 20, text: 'text-lg' },
+    normal: { wrap: 'gap-2', icon: 28, text: 'text-2xl' },
+    large: { wrap: 'gap-3', icon: 40, text: 'text-4xl' },
   };
-
-  const iconSizes = {
-    small: 24,
-    normal: 32,
-    large: 48
-  };
+  const s = sizes[size];
 
   return (
-    <div className={`font-black tracking-tighter flex items-center gap-2 text-indigo-600 ${sizeClasses[size]}`}>
-      <div className="relative">
-        <svg xmlns="http://www.w3.org/2000/svg" width={iconSizes[size]} height={iconSizes[size]} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="transform -rotate-45">
-          <path d="M2 12h20"/><path d="m13 2 9 10-9 10"/><path d="M2 12l5-5m-5 5l5 5"/>
+    <div className={`flex items-center ${s.wrap} ${className}`}>
+      <div className="bg-gradient-to-br from-indigo-500 to-blue-600 p-1.5 rounded-xl shadow-sm text-white">
+        <svg xmlns="http://www.w3.org/2000/svg" width={s.icon} height={s.icon} viewBox="0 0 24 24" fill="currentColor">
+          {/* Stylizovaná skupina přátel tvořící pin/lokaci */}
+          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zM7 9c0-2.76 2.24-5 5-5s5 2.24 5 5c0 2.88-2.21 7.15-5 10.64C9.21 16.15 7 11.88 7 9z"/>
+          <circle cx="12" cy="9" r="2.5"/>
+          <circle cx="8.5" cy="14" r="1.5" opacity="0.7"/>
+          <circle cx="15.5" cy="14" r="1.5" opacity="0.7"/>
         </svg>
-        <div className="absolute -top-1 -right-1 w-2 h-2 bg-rose-500 rounded-full animate-pulse"></div>
       </div>
-      <span className="text-slate-900">Tripenzí</span>
+      {/* ZMĚNA ZDE: tracking-wide (větší mezery) místo tracking-tighter */}
+      <h1 className={`${s.text} font-black tracking-wide text-slate-900`}>
+        Trip<span className="text-indigo-600">enzi</span>
+      </h1>
     </div>
   );
 }

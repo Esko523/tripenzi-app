@@ -15,9 +15,10 @@ const CURRENCIES = ["CZK", "EUR", "USD", "PLN", "HRK", "GBP", "VND", "IDR", "HUF
 
 type Trip = { 
   id: number; name: string; color: string; 
-  startDate?: string; endDate?: string; // Změna: skutečná data
+  startDate?: string; endDate?: string;
   budget: number; spent: number; coverImage?: string;
   baseCurrency?: string; totalBudget?: number; shareCode?: string; mapLink?: string;
+  weatherLocation?: string; // Nové pole
 };
 
 interface SettingsProps {
@@ -35,6 +36,7 @@ export default function SettingsView({ trip, onUpdate, onDelete, onColorChange }
   const [editBudget, setEditBudget] = useState(trip.totalBudget?.toString() || "");
   const [editMapLink, setEditMapLink] = useState(trip.mapLink || "");
   const [editImage, setEditImage] = useState(trip.coverImage || "");
+  const [editWeatherLocation, setEditWeatherLocation] = useState(trip.weatherLocation || ""); // Nový stav
 
   useEffect(() => {
     setEditName(trip.name);
@@ -44,18 +46,20 @@ export default function SettingsView({ trip, onUpdate, onDelete, onColorChange }
     setEditBudget(trip.totalBudget?.toString() || "");
     setEditMapLink(trip.mapLink || "");
     setEditImage(trip.coverImage || "");
+    setEditWeatherLocation(trip.weatherLocation || "");
   }, [trip]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onUpdate({
         name: editName,
-        start_date: editStartDate, // Ukládáme do nových sloupců
+        start_date: editStartDate,
         end_date: editEndDate,
         base_currency: editCurrency,
         total_budget: editBudget ? Number(editBudget) : 0,
         map_link: editMapLink,
-        cover_image: editImage
+        cover_image: editImage,
+        weather_location: editWeatherLocation // Uložení města
     });
   };
 
@@ -95,7 +99,12 @@ export default function SettingsView({ trip, onUpdate, onDelete, onColorChange }
             <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} className={inputStyle} />
         </div>
         
-        {/* ZMĚNA: Dva inputy pro datum */}
+        {/* ZDE JE NOVÉ POLE PRO POČASÍ */}
+        <div>
+            <label className="block text-xs font-bold text-slate-400 mb-1 ml-1 uppercase tracking-wider">Místo pro počasí (Město)</label>
+            <input type="text" value={editWeatherLocation} onChange={(e) => setEditWeatherLocation(e.target.value)} placeholder="Např. Lipno nad Vltavou" className={inputStyle} />
+        </div>
+
         <div className="grid grid-cols-2 gap-4">
             <div>
                 <label className="block text-xs font-bold text-slate-400 mb-1 ml-1 uppercase tracking-wider">Od</label>
