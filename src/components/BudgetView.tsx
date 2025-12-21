@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 
 // --- IKONY ---
-const TrashIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>;
+const TrashIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>;
 const BackIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>;
 const CheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>;
 const BackspaceIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 5H9l-7 7 7 7h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2Z"/><line x1="18" x2="12" y1="9" y2="15"/><line x1="12" x2="18" y1="9" y2="15"/></svg>;
@@ -97,6 +97,10 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
     else if (liveRates[currency]) { setExchangeRate(Number((1 / liveRates[currency]).toFixed(4))); }
   }, [currency, baseCurrency, liveRates]);
 
+  const formatMoney = (val: number) => {
+      return val.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
   const safeExpenses = Array.isArray(expenses) ? expenses : [];
 
   const { calculatedTotal, balances, debts, statsByCategory, statsByPerson } = useMemo(() => {
@@ -107,17 +111,16 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
     safeExpenses.forEach(expense => {
       const rate = expense.exchangeRate || 1;
       const amountInBase = expense.amount * rate;
+      
       if (!expense.isSettlement) {
         sumTotal += amountInBase;
         const cat = expense.category || 'other';
         cats[cat] = (cats[cat] || 0) + amountInBase;
       }
+      
       const payerName = activeParticipants.includes(expense.payer) ? expense.payer : null;
       if (payerName) bals[payerName] += amountInBase;
 
-      // --- ZÁSADNÍ OPRAVA LOGIKY PRO SPLÁCENÍ ---
-      // Pokud je to "Settlement" (vyrovnání), musíme to brát jako PŘESNÝ PŘEVOD (exact), 
-      // i když v databázi chybí označení metody. Jinak se to dělí mezi oba a dluh se jen půlí.
       const method = expense.isSettlement ? 'exact' : (expense.splitMethod || 'equal');
 
       if (method === 'equal') {
@@ -137,9 +140,8 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
       }
     });
 
-    // Tolerance 1.0 (ignorujeme rozdíly menší než koruna)
-    let debtors = Object.entries(bals).filter(([, b]) => b < -0.99).sort(([, a], [, b]) => a - b);
-    let creditors = Object.entries(bals).filter(([, b]) => b > 0.99).sort(([, a], [, b]) => b - a);
+    let debtors = Object.entries(bals).filter(([, b]) => b < -0.01).sort(([, a], [, b]) => a - b);
+    let creditors = Object.entries(bals).filter(([, b]) => b > 0.01).sort(([, a], [, b]) => b - a);
     const transactions = [];
     let i = 0; let j = 0;
     while (i < debtors.length && j < creditors.length) {
@@ -148,22 +150,21 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
         const amount = Math.min(Math.abs(debtor[1]), creditor[1]);
         transactions.push({ from: debtor[0], to: creditor[0], amount: amount });
         debtor[1] += amount; creditor[1] -= amount;
-        if (Math.abs(debtor[1]) < 0.99) i++; if (creditor[1] < 0.99) j++;
+        if (Math.abs(debtor[1]) < 0.01) i++; if (creditor[1] < 0.01) j++;
     }
     return { calculatedTotal: sumTotal, balances: bals, debts: transactions, statsByCategory: cats, statsByPerson: pers };
   }, [safeExpenses, activeParticipants, baseCurrency]);
 
   const handleExport = () => {
-      let text = `🌍 Vyúčtování (${baseCurrency})\nCelkem: ${Math.round(calculatedTotal)}\n\n`;
+      let text = `🌍 Vyúčtování (${baseCurrency})\nCelkem: ${formatMoney(calculatedTotal)}\n\n`;
       if (debts.length === 0) text += "Vyrovnáno! ✅";
-      else debts.forEach(d => text += `${d.from} ➡️ ${d.to}: ${Math.round(d.amount)} ${baseCurrency}\n`);
+      else debts.forEach(d => text += `${d.from} ➡️ ${d.to}: ${formatMoney(d.amount)} ${baseCurrency}\n`);
       navigator.clipboard.writeText(text).then(() => alert("Zkopírováno! 📋"));
   };
 
   const openSettleUp = (from: string, to: string, amount: number) => {
       setTitle(`Splátka pro ${to}`);
-      // Použijeme Math.ceil (zaokrouhlit nahoru), aby se dluh vyrovnal úplně a nezbyly haléře
-      setDisplayValue(String(Math.ceil(amount))); 
+      setDisplayValue(String(amount.toFixed(2))); 
       setCurrency(baseCurrency);
       setExchangeRate(1);
       setPayer(from);
@@ -185,18 +186,18 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
   const goToStep2 = () => { const res = calculateResult(); if (res > 0) { setDisplayValue(String(res)); setStep(2); } };
   
   const handleSubmit = () => {
-    // Tady se vytváří objekt pro uložení
     let finalSplitDetails = splitValues;
+    const finalAmount = calculateResult();
+
     if (isSettlement) {
-        // Pokud je to vyrovnání, vytvoříme přesný split: Příjemce dostane celou částku.
         finalSplitDetails = {};
         activeParticipants.forEach(p => finalSplitDetails[p] = 0);
-        finalSplitDetails[settleReceiver] = calculateResult();
+        finalSplitDetails[settleReceiver] = finalAmount;
     }
 
     onAddExpense({ 
         title: isSettlement ? "Vyrovnání dluhu" : title, 
-        amount: calculateResult(), 
+        amount: finalAmount, 
         currency, 
         exchangeRate, 
         payer: payer || activeParticipants[0], 
@@ -234,7 +235,7 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
                 <>
                     <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-200 mb-6 text-center relative overflow-hidden">
                         <p className="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1 relative z-10">Celková útrata</p>
-                        <h2 className="text-4xl font-black text-gray-900 relative z-10">{Math.round(calculatedTotal).toLocaleString()} {baseCurrency}</h2>
+                        <h2 className="text-4xl font-black text-gray-900 relative z-10">{formatMoney(calculatedTotal)} {baseCurrency}</h2>
                         {totalBudget > 0 && (
                             <div className="mt-2 relative z-10">
                                 <div className="text-xs font-bold text-gray-400 mb-1">z rozpočtu {totalBudget.toLocaleString()} {baseCurrency}</div>
@@ -252,7 +253,7 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
                                 <button key={name} onClick={() => handleFilterPerson(name)} className={`flex flex-col items-center min-w-[70px] p-2 rounded-xl border transition ${filterPerson === name ? 'bg-gray-100 border-gray-400' : 'bg-white border-gray-100'}`}>
                                     <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold mb-1 bg-slate-100 text-slate-700">{name.charAt(0)}</div>
                                     <span className="text-[10px] font-bold text-gray-900">{name}</span>
-                                    <span className={`text-[10px] font-bold ${bal >= 0.5 ? 'text-green-600' : bal <= -0.5 ? 'text-red-500' : 'text-gray-400'}`}>{Math.round(bal)}</span>
+                                    <span className={`text-[10px] font-bold ${bal >= 0.01 ? 'text-green-600' : bal <= -0.01 ? 'text-red-500' : 'text-gray-400'}`}>{bal === 0 ? '0' : (bal > 0 ? '+' : '') + formatMoney(bal)}</span>
                                 </button>
                             )
                         })}
@@ -263,10 +264,10 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
                             <h3 className="font-bold text-gray-800 mb-3 px-2">🤝 Kdo komu dluží</h3>
                             <div className="space-y-2">
                                 {debts.map((t, idx) => (
-                                    Math.round(t.amount) > 0 && (
+                                    Math.round(t.amount * 100) > 0 && (
                                     <div key={idx} className="bg-white p-3 rounded-xl border border-gray-200 flex justify-between items-center shadow-sm">
                                         <div className="flex items-center gap-2 text-sm text-gray-700"><span className="font-bold">{t.from}</span> → <span className="font-bold">{t.to}</span></div>
-                                        <div className="flex items-center gap-2"><span className="font-bold text-blue-600">{Math.round(t.amount)} {baseCurrency}</span><button onClick={() => openSettleUp(t.from, t.to, t.amount)} className="text-[10px] bg-blue-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-blue-700 shadow-md active:scale-95">Splatit</button></div>
+                                        <div className="flex items-center gap-2"><span className="font-bold text-blue-600">{formatMoney(t.amount)} {baseCurrency}</span><button onClick={() => openSettleUp(t.from, t.to, t.amount)} className="text-[10px] bg-blue-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-blue-700 shadow-md active:scale-95">Splatit</button></div>
                                     </div>
                                     )
                                 ))}
@@ -295,7 +296,7 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
                                 </div>
                                 <div className="text-right">
                                     <span className={`font-bold block ${isSettlement ? 'text-green-600' : 'text-gray-900'}`}>
-                                        {isSettlement ? '+' : '-'}{Math.round(expense.amount * (expense.exchangeRate || 1))} {baseCurrency}
+                                        {isSettlement ? '+' : '-'}{formatMoney(expense.amount * (expense.exchangeRate || 1))} {baseCurrency}
                                     </span>
                                 </div>
                             </div>
@@ -310,7 +311,7 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
                         <div className="space-y-3">
                             {Object.entries(statsByPerson).sort(([,a], [,b]) => b-a).map(([name, amount]) => (
                                 <div key={name}>
-                                    <div className="flex justify-between text-xs font-bold mb-1"><span>{name}</span><span>{Math.round(amount)} {baseCurrency}</span></div>
+                                    <div className="flex justify-between text-xs font-bold mb-1"><span>{name}</span><span>{formatMoney(amount)} {baseCurrency}</span></div>
                                     <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                                         <div className="h-full bg-blue-500 rounded-full" style={{ width: `${calculatedTotal > 0 ? (amount / calculatedTotal) * 100 : 0}%` }}></div>
                                     </div>
@@ -318,6 +319,7 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
                             ))}
                         </div>
                     </div>
+                    
                     {/* VRÁCENÝ GRAF KATEGORIÍ */}
                     <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
                         <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><ChartIcon /> Útrata podle kategorií</h3>
@@ -327,7 +329,7 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
                                 if (amount === 0) return null;
                                 return (
                                     <div key={cat.id}>
-                                        <div className="flex justify-between text-xs font-bold mb-1"><span className="flex items-center gap-1">{cat.icon} {cat.label}</span><span>{Math.round(amount)} {baseCurrency}</span></div>
+                                        <div className="flex justify-between text-xs font-bold mb-1"><span className="flex items-center gap-1">{cat.icon} {cat.label}</span><span>{formatMoney(amount)} {baseCurrency}</span></div>
                                         <div className="h-2 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-orange-400 rounded-full" style={{ width: `${calculatedTotal > 0 ? (amount / calculatedTotal) * 100 : 0}%` }}></div></div>
                                     </div>
                                 )
@@ -343,6 +345,52 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
         </>
       )}
 
+      {/* DETAIL VÝDAJE (ÚČTENKA - VYLEPŠENÁ) */}
+      {selectedExpense && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-md z-50 flex items-center justify-center p-4" onClick={() => setSelectedExpense(null)}>
+              <div 
+                className="bg-white/95 w-full max-w-sm p-6 shadow-2xl relative animate-in zoom-in duration-200"
+                style={{ 
+                    // Cik-cak okraj dole
+                    clipPath: "polygon(0 0, 100% 0, 100% calc(100% - 10px), 95% 100%, 90% calc(100% - 10px), 85% 100%, 80% calc(100% - 10px), 75% 100%, 70% calc(100% - 10px), 65% 100%, 60% calc(100% - 10px), 55% 100%, 50% calc(100% - 10px), 45% 100%, 40% calc(100% - 10px), 35% 100%, 30% calc(100% - 10px), 25% 100%, 20% calc(100% - 10px), 15% 100%, 10% calc(100% - 10px), 5% 100%, 0 calc(100% - 10px))",
+                    paddingBottom: "30px" 
+                }}
+                onClick={e => e.stopPropagation()}
+              >
+                  <button onClick={() => setSelectedExpense(null)} className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full hover:bg-gray-200"><XIcon /></button>
+                  <div className="text-center mb-6 pt-4">
+                      <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center text-3xl mx-auto mb-3 border-2 border-dashed border-slate-200">
+                          {selectedExpense.isSettlement ? <SettleIcon /> : (CATEGORIES.find(c => c.id === selectedExpense.category)?.icon || <ShopIcon />)}
+                      </div>
+                      <h3 className="text-2xl font-bold text-slate-900 leading-tight">{selectedExpense.title}</h3>
+                      <p className="text-slate-500 text-xs font-bold mt-1 uppercase tracking-widest">{selectedExpense.category === 'settlement' ? 'Vyrovnání dluhu' : CATEGORIES.find(c => c.id === selectedExpense.category)?.label}</p>
+                  </div>
+                  
+                  <div className="bg-slate-50 p-4 mb-6 text-center border-y-2 border-dashed border-slate-200">
+                      <p className="text-4xl font-mono font-bold text-slate-900 tracking-tighter">{formatMoney(selectedExpense.amount)}</p>
+                      <p className="text-sm font-bold text-slate-400 mt-1">{selectedExpense.currency}</p>
+                      {selectedExpense.currency !== baseCurrency && <p className="text-xs text-slate-400 font-bold mt-1">≈ {formatMoney(selectedExpense.amount * (selectedExpense.exchangeRate || 1))} {baseCurrency}</p>}
+                  </div>
+                  
+                  <div className="space-y-3 text-sm mb-6">
+                      <div className="flex justify-between"><span className="text-slate-400 font-bold uppercase text-xs">Platil</span><span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded">{selectedExpense.payer}</span></div>
+                      <div className="border-t border-slate-100 my-2"></div>
+                      <div>
+                          <span className="text-slate-400 font-bold uppercase text-xs block mb-2">{selectedExpense.isSettlement ? 'Příjemce' : 'Rozděleno mezi'}</span>
+                          <div className="flex flex-wrap gap-1">
+                             {selectedExpense.splitMethod === 'equal' ? (
+                                (selectedExpense.forWhom || Object.keys(selectedExpense.splitDetails || {})).map(p => <span key={p} className="bg-white px-2 py-1 rounded border border-slate-200 text-xs font-bold text-slate-700 shadow-sm">{p}</span>)
+                             ) : (
+                                Object.entries(selectedExpense.splitDetails || {}).map(([name, val]) => (val > 0 && <div key={name} className="w-full flex justify-between text-xs bg-white p-2 rounded border border-slate-100 shadow-sm"><span>{name}</span><span className="font-bold font-mono">{formatMoney(val)}</span></div>))
+                             )}
+                          </div>
+                      </div>
+                  </div>
+                  <button onClick={() => { onDeleteExpense(selectedExpense.id); setSelectedExpense(null); }} className="w-full py-3 border-2 border-red-50 text-red-500 bg-red-50/50 font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-red-100 transition text-sm uppercase tracking-wider"><TrashIcon /> Smazat</button>
+              </div>
+          </div>
+      )}
+
       {isWizardOpen && (
         <div className="fixed inset-0 bg-gray-100 z-50 flex flex-col animate-in slide-in-from-bottom duration-300">
             <div className="bg-white p-4 flex items-center justify-between shadow-sm border-b border-gray-200">
@@ -354,6 +402,22 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
             {step === 1 && (
                 <div className="flex-1 flex flex-col">
                     <div className="flex-1 flex flex-col justify-end items-end p-6 bg-gray-50">
+                        {/* ZNOVU PŘIDANÝ VÝBĚR MĚNY */}
+                        {!isSettlement && (
+                            <div className="relative mb-4">
+                                <button onClick={() => setIsCurrencyDropdownOpen(!isCurrencyDropdownOpen)} className="flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-full border bg-white shadow-sm border-gray-200 text-gray-800">
+                                    {currency} <ChevronDown />
+                                    {ratesLoading && <span className="animate-spin"><RefreshIcon/></span>}
+                                </button>
+                                {isCurrencyDropdownOpen && (
+                                    <div className="absolute top-8 right-0 bg-white border border-gray-200 shadow-xl rounded-xl p-2 grid grid-cols-2 gap-2 z-50 w-48">
+                                        {CURRENCIES.map(curr => (
+                                            <button key={curr} onClick={() => { setCurrency(curr); setIsCurrencyDropdownOpen(false); }} className={`px-2 py-1 rounded text-sm font-bold text-left hover:bg-gray-50 ${currency===curr ? 'text-blue-600' : 'text-gray-600'}`}>{curr}</button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                         <div className="text-6xl font-black text-gray-900 tracking-tighter break-all text-right w-full drop-shadow-sm">
                             {displayValue} <span className="text-2xl text-gray-400 font-medium">{currency}</span>
                         </div>
@@ -395,7 +459,7 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
                             </div>
                         )}
                     </div>
-
+                    
                     <div>
                         <label className="text-xs font-bold text-gray-500 uppercase mb-2 block ml-1">Kategorie</label>
                         <div className="flex justify-between gap-1">{CATEGORIES.map(cat => (<button key={cat.id} onClick={() => setCategory(cat.id)} className={`flex-1 h-12 rounded-xl flex items-center justify-center text-xl transition border-2 ${category === cat.id ? 'bg-blue-50 border-blue-500 scale-105 shadow-sm' : 'bg-white border-transparent text-gray-400 hover:bg-gray-100'}`}>{cat.icon}</button>))}</div>
@@ -419,7 +483,7 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
                             {splitMethod === 'exact' && (
                                 <div className="space-y-2">
                                     {activeParticipants.map(person => (<div key={person} className="flex justify-between items-center text-xs"><span className="font-bold text-gray-700">{person}</span><div className="flex items-center gap-1"><input type="number" placeholder="0" value={splitValues[person] || ''} onChange={(e) => setSplitValues({...splitValues, [person]: Number(e.target.value)})} className="w-20 bg-gray-50 border border-gray-200 rounded px-2 py-1 text-right focus:outline-blue-500 font-bold" /><span className="text-gray-400">{currency}</span></div></div>))}
-                                    <div className={`text-right text-xs font-bold mt-2 ${Math.abs(Number(displayValue) - Object.values(splitValues).reduce((a,b)=>a+(Number(b)||0),0)) < 0.1 ? 'text-green-600' : 'text-red-500'}`}>Zbývá: {Math.round((Number(displayValue) - Object.values(splitValues).reduce((a,b)=>a+(Number(b)||0),0))*100)/100} {currency}</div>
+                                    <div className={`text-right text-xs font-bold mt-2 ${Math.abs(Number(displayValue) - Object.values(splitValues).reduce((a,b)=>a+(Number(b)||0),0)) < 0.1 ? 'text-green-600' : 'text-red-500'}`}>Zbývá: {formatMoney(Number(displayValue) - Object.values(splitValues).reduce((a,b)=>a+(Number(b)||0),0))} {currency}</div>
                                 </div>
                             )}
                             {splitMethod === 'shares' && (
@@ -427,6 +491,7 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
                             )}
                         </div>
                     </div>
+
                     <button onClick={handleSubmit} className="w-full bg-black text-white py-4 rounded-xl font-bold text-lg shadow-xl active:scale-95 transition hover:bg-gray-900">ULOŽIT VÝDAJ</button>
                     <div className="h-10"></div>
                 </div>
