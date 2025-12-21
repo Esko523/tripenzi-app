@@ -137,6 +137,46 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
 
   useEffect(() => { fetchTripData(); }, [fetchTripData]);
 
+  // --- REALTIME AKTUALIZACE ---
+  useEffect(() => {
+    if (!trip?.id) return; // Čekáme, až se načte ID tripu
+
+    console.log("🟢 Připojuji se k Realtime odběru pro trip:", trip.id);
+
+    const channel = supabase
+      .channel(`trip_updates_${trip.id}`)
+      // 1. Změny ve VÝDAJÍCH
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses', filter: `trip_id=eq.${trip.id}` }, () => {
+         console.log("💰 Změna ve výdajích -> aktualizuji...");
+         fetchTripData();
+      })
+      // 2. Změny v PLÁNU (events)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'events', filter: `trip_id=eq.${trip.id}` }, () => {
+         console.log("📅 Změna v plánu -> aktualizuji...");
+         fetchTripData();
+      })
+      // 3. Změny v ÚČASTNÍCÍCH
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'participants', filter: `trip_id=eq.${trip.id}` }, () => {
+         fetchTripData();
+      })
+      // 4. Změny v POZNÁMKÁCH
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trip_details', filter: `trip_id=eq.${trip.id}` }, () => {
+         fetchTripData();
+      })
+      // 5. Změny v NASTAVENÍ TRIPU (např. jméno, barva)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips', filter: `id=eq.${trip.id}` }, () => {
+         fetchTripData();
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') console.log("✅ Připojeno k Realtime!");
+      });
+
+    // Úklid při odchodu ze stránky
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [trip?.id, fetchTripData]); // Důležité: závislost jen na ID, aby se to nepřipojovalo pořád dokola
+
   // --- CRUD FUNKCE ---
   const addParticipant = async (name: string) => { if (!trip) return; await supabase.from('participants').insert([{ trip_id: trip.id, name }]); fetchTripData(); };
   const deleteParticipant = async (id: number) => { await supabase.from('participants').delete().eq('id', id); fetchTripData(); };
@@ -193,8 +233,7 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
                     <div className="bg-black/20 backdrop-blur-md px-3 py-1 rounded-lg text-[10px] font-bold border border-white/10 text-white flex items-center gap-1.5 width-fit">
                         <ClockIcon /> {trip.dateFormatted}
                     </div>
-                    {/* WIDGET POČASÍ - Zobrazí se, pokud je weatherLocation nastavené */}
-                    <WeatherWidget city={trip.weatherLocation} />
+                    <WeatherWidget city={trip.weatherLocation || trip.name} />
                 </div>
 
                 <div className="mt-4 flex items-center gap-4 text-sm font-medium bg-black/30 p-2 rounded-lg inline-flex backdrop-blur-md border border-white/10"><span>💰 Útrata: {trip.spent} {trip.baseCurrency}</span></div>
