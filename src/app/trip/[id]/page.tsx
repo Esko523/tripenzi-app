@@ -9,6 +9,7 @@ import PlanView from '@/components/PlanView';
 import InfoView from '@/components/InfoView';
 import WeatherWidget from '@/components/WeatherWidget';
 import { supabase } from '@/lib/supabaseClient';
+import Logo from '@/components/Logo';
 
 // --- HLAVNÍ IKONY ---
 const ArrowLeft = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>;
@@ -94,33 +95,46 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
       return "🏁 Trip skončil";
   };
 
+  // --- UPRAVENÁ FUNKCE S OFFLINE PODPOROU ---
   const fetchTripData = useCallback(async () => {
-    // ID pro cache klíč (použijeme shareCodeParam, je unikátní)
+    // Unikátní klíč pro uložení tohoto konkrétního výletu
     const cacheKey = `trip_detail_${shareCodeParam}`;
 
-    // 1. RYCHLÉ NAČTENÍ Z CACHE
+    // 1. ZKUSÍME NAČÍST Z CACHE (aby to naběhlo hned)
     const cachedData = localStorage.getItem(cacheKey);
     if (cachedData) {
-        console.log("⚡ Načítám detail z cache");
+        console.log("⚡ Načítám detail tripu z cache...");
         setTrip(JSON.parse(cachedData));
         setLoading(false);
     }
 
     try {
-        // 2. STAŽENÍ DAT ZE SERVERU
+        // 2. ZKUSÍME STÁHNOUT ČERSTVÁ DATA (ONLINE)
         const { data: tripData, error: tripError } = await supabase.from('trips').select('*').eq('share_code', shareCodeParam).single();
         
-        // ... (zde je tvůj kód pro přesměrování při chybě, ten nech stejný) ...
-        if (tripError || !tripData) { /* ... tvá logika pro redirect ... */ return; }
+        // Pokud chyba a nemáme cache -> přesměrujeme pryč
+        // Pokud chyba ale MÁME cache -> zůstaneme (vyřešeno v catch bloku níže)
+        if (tripError || !tripData) { 
+            if (!cachedData) { // Jen pokud nemáme ani offline data
+                if (!isNaN(Number(shareCodeParam))) {
+                     const { data: oldTrip } = await supabase.from('trips').select('*').eq('id', shareCodeParam).single();
+                     if (oldTrip && oldTrip.share_code) { router.push(`/trip/${oldTrip.share_code}`); return; }
+                }
+                // Pokud to opravdu neexistuje a nemáme to v cache -> pryč
+                // Ale pozor: při offline erroru to spadne do catch, takže se redirect nestane, což chceme.
+                // router.push('/'); 
+                return;
+            } else {
+                throw new Error("Offline or Trip not found"); // Hodíme chybu, aby to spadlo do catch a nechalo cache
+            }
+        }
 
         const tripId = tripData.id;
-        // Stáhneme všechna pod-data
         const { data: participantsData } = await supabase.from('participants').select('*').eq('trip_id', tripId);
         const { data: expensesData } = await supabase.from('expenses').select('*').eq('trip_id', tripId);
         const { data: detailsData } = await supabase.from('trip_details').select('*').eq('trip_id', tripId).maybeSingle();
         const { data: eventsData } = await supabase.from('events').select('*').eq('trip_id', tripId).order('date', { ascending: true }).order('time', { ascending: true });
 
-        // Zpracování výdajů (tvůj kód)
         const loadedExpenses: Expense[] = (expensesData || []).map((e: any) => ({
             id: e.id, title: e.title, amount: e.amount, currency: e.currency, exchangeRate: e.exchange_rate, payer: e.payer, category: e.category, splitMethod: e.split_method, splitDetails: e.split_details, forWhom: e.for_whom, isSettlement: e.is_settlement
         }));
@@ -130,7 +144,7 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
             return sum + (item.amount * (item.exchangeRate || 1));
         }, 0);
 
-        // Sestavení objektu
+        // Sestavíme kompletní objekt
         const fullTripData = {
             id: tripData.id,
             name: tripData.name,
@@ -153,12 +167,16 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
             expenses: loadedExpenses
         };
 
-        // 3. AKTUALIZACE A ULOŽENÍ DO CACHE
         setTrip(fullTripData);
-        localStorage.setItem(cacheKey, JSON.stringify(fullTripData)); // <--- TOTO JE TO KOUZLO
+        
+        // 3. ULOŽÍME DO CACHE PRO PŘÍŠTĚ
+        console.log("💾 Ukládám detail tripu do cache");
+        localStorage.setItem(cacheKey, JSON.stringify(fullTripData));
 
     } catch (err) {
-        console.error("Chyba sítě / Offline mód:", err);
+        console.log("⚠️ Jsem offline, zobrazuji data z cache.");
+        // Pokud máme cache, nic neděláme (zůstane zobrazena).
+        // Pokud cache nemáme, uživatel uvidí nekonečný loading (nebo můžeme přidat hlášku), ale nepřesměruje ho to pryč.
     } finally {
         setLoading(false);
     }
@@ -166,6 +184,7 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
 
   useEffect(() => { fetchTripData(); }, [fetchTripData]);
 
+  // Realtime aktualizace (funguje jen online)
   useEffect(() => {
     if (!trip?.id) return;
     const channel = supabase
@@ -179,10 +198,11 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
     return () => { supabase.removeChannel(channel); };
   }, [trip?.id, fetchTripData]);
 
+  // --- CRUD funkce ---
   const addParticipant = async (name: string) => { if (!trip) return; await supabase.from('participants').insert([{ trip_id: trip.id, name }]); fetchTripData(); };
   const deleteParticipant = async (id: number) => { await supabase.from('participants').delete().eq('id', id); fetchTripData(); };
   
-  const addExpense = async (expenseData: Omit<Expense, "id">): Promise<void> => { if (!trip) return; const dbPayload = { trip_id: trip.id, title: expenseData.title, amount: expenseData.amount, currency: expenseData.currency, exchange_rate: expenseData.exchangeRate, payer: expenseData.payer, category: expenseData.category, split_method: expenseData.splitMethod, split_details: expenseData.splitDetails, for_whom: expenseData.forWhom, is_settlement: expenseData.isSettlement }; await supabase.from('expenses').insert([dbPayload]); fetchTripData(); };
+  const addExpense = async (expenseData: Omit<Expense, "id">) => { if (!trip) return; const dbPayload = { trip_id: trip.id, title: expenseData.title, amount: expenseData.amount, currency: expenseData.currency, exchange_rate: expenseData.exchangeRate, payer: expenseData.payer, category: expenseData.category, split_method: expenseData.splitMethod, split_details: expenseData.splitDetails, for_whom: expenseData.forWhom, is_settlement: expenseData.isSettlement }; await supabase.from('expenses').insert([dbPayload]); fetchTripData(); };
   const deleteExpense = async (id: number) => { await supabase.from('expenses').delete().eq('id', id); fetchTripData(); };
   
   const saveDetails = async (notes: string, photoLink: string) => { if(!trip) return; const { data } = await supabase.from('trip_details').select('id').eq('trip_id', trip.id).maybeSingle(); if (data) await supabase.from('trip_details').update({ notes, photo_link: photoLink }).eq('trip_id', trip.id); else await supabase.from('trip_details').insert([{ trip_id: trip.id, notes, photo_link: photoLink }]); };
@@ -218,39 +238,31 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
   const headerStyle = trip.coverImage ? { backgroundImage: `url(${trip.coverImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {};
   const headerClass = trip.coverImage ? "relative text-white" : `bg-gradient-to-r ${trip.color} text-white relative`;
 
-  // --- ZMĚNA: Hranatější 'Glass' kontejnery (rounded-xl) ---
   const glassContainer = "bg-black/20 backdrop-blur-md px-4 py-2 rounded-xl text-xs font-bold border border-white/10 text-white flex items-center gap-2 shadow-sm";
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24 font-sans max-w-md mx-auto relative">
-      {/* --- BANNER --- */}
       <div className={`${headerClass} p-6 pb-20 transition-all duration-500`} style={headerStyle}>
         {trip.coverImage && <div className="absolute inset-0 bg-black/40"></div>}
         
         <div className="relative z-10">
-            {/* Horní řádek: Zpět + Odpočet */}
             <div className="mb-6 flex justify-between items-start">
-                {/* ZMĚNA: rounded-xl pro tlačítko zpět */}
                 <Link href="/" className="p-2.5 bg-black/20 border border-white/10 rounded-xl hover:bg-black/30 transition backdrop-blur-md flex items-center justify-center text-white"><ArrowLeft /></Link>
                 
                 {trip.startDate && (
-                    // ZMĚNA: rounded-xl pro odpočet
                     <div className="px-3 py-1.5 bg-yellow-400 text-yellow-900 rounded-xl text-[10px] font-black uppercase tracking-wide shadow-lg border border-yellow-200 transform rotate-1">
                         {getCountdownText()}
                     </div>
                 )}
             </div>
             
-            {/* Název a Info */}
             <div>
                 <h1 className="text-4xl font-bold drop-shadow-lg mb-4 leading-tight">{trip.name}</h1>
                 
                 <div className="flex flex-wrap items-center gap-2">
-                    {/* Datum (používá glassContainer s rounded-xl) */}
                     <div className={glassContainer}>
                         <ClockIcon /> {trip.dateFormatted}
                     </div>
-                    {/* Počasí Widget (upraven v WeatherWidget.tsx) */}
                     <WeatherWidget city={trip.weatherLocation || trip.name} />
                 </div>
 
@@ -263,10 +275,8 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
         </div>
       </div>
 
-      {/* --- HLAVNÍ OBSAH (Méně kulatý vršek: rounded-t-3xl) --- */}
       <div className="-mt-12 bg-white rounded-t-3xl min-h-screen relative z-10 flex flex-col shadow-2xl shadow-black/5">
         
-        {/* NAVIGACE (ZPĚT K MODRÉMU PODTRŽENÍ) */}
         <div className="flex border-b border-gray-100 px-2 pt-2">
           <button 
             onClick={() => setActiveTab('plan')} 
