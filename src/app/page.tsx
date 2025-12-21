@@ -76,38 +76,56 @@ export default function TripenziApp() {
       return { text: "🏁 Skončilo", style: baseStyle };
   };
 
+  // --- OPRAVENÁ FUNKCE NAČÍTÁNÍ (NEPŘEPISUJE CACHE PŘI CHYBĚ) ---
   const loadTrips = useCallback(async () => {
     if (!currentUser) return;
 
-    // --- ZDE JE TEN VÝPIS PRO DEBUGGING ---
     const cacheKey = `trips_cache_${currentUser.custom_id}`;
-    console.log("🔍 [DEBUG] Hledám v Cache pod klíčem:", cacheKey);
-
-    // 1. ZKUSÍME NAČÍST Z CACHE
-    const cachedTrips = localStorage.getItem(cacheKey);
     
+    // 1. NAČTENÍ Z CACHE
+    const cachedTrips = localStorage.getItem(cacheKey);
     if (cachedTrips) {
-        console.log("✅ [DEBUG] Našel jsem data v Cache:", JSON.parse(cachedTrips));
+        console.log("✅ [DEBUG] Našel jsem data v Cache, zobrazuji...");
         setTrips(JSON.parse(cachedTrips));
         setLoading(false); 
-    } else {
-        console.log("❌ [DEBUG] V Cache nic není pro tento klíč.");
     }
 
-    // 2. ZKUSÍME ONLINE
+    // 2. POKUS O ONLINE NAČTENÍ
     try {
-        const { data: memberData } = await supabase.from('trip_members').select('trip_id').eq('user_id', currentUser.custom_id);
+        // Získání členství v tripech
+        const { data: memberData, error: memberError } = await supabase
+            .from('trip_members')
+            .select('trip_id')
+            .eq('user_id', currentUser.custom_id);
+
+        // KDYŽ NASTANE CHYBA (OFFLINE), OKAMŽITĚ KONČÍME A NECHÁVAME DATA Z CACHE
+        if (memberError) {
+            console.log("⚠️ [OFFLINE] Nepodařilo se načíst členství, zůstávám u cache.");
+            return; 
+        }
+
         if (!memberData || memberData.length === 0) { 
-            console.log("☁️ [ONLINE] Uživatel nemá žádné tripy na serveru.");
+            console.log("☁️ [ONLINE] Uživatel skutečně nemá žádné tripy (server odpověděl prázdným seznamem).");
             setTrips([]); 
             localStorage.removeItem(cacheKey);
             return; 
         }
         
         const tripIds = memberData.map(m => m.trip_id);
-        const { data, error } = await supabase.from('trips').select('*').in('id', tripIds);
+        
+        // Získání samotných tripů
+        const { data, error: tripsError } = await supabase
+            .from('trips')
+            .select('*')
+            .in('id', tripIds);
 
-        if (!error && data) {
+        // KDYŽ NASTANE CHYBA TADY (OFFLINE), TAKY KONČÍME
+        if (tripsError) {
+             console.log("⚠️ [OFFLINE] Nepodařilo se stáhnout detaily tripů, zůstávám u cache.");
+             return;
+        }
+
+        if (data) {
             const tripsWithSpent = await Promise.all(data.map(async (trip) => {
                 const { data: expenses } = await supabase.from('expenses').select('amount, exchange_rate, is_settlement').eq('trip_id', trip.id);
                 const spent = expenses?.reduce((sum, item) => {
@@ -117,12 +135,12 @@ export default function TripenziApp() {
                 return { ...trip, spent: Math.round(spent) };
             }));
             
-            console.log("💾 [SAVE] Ukládám nová data do Cache:", cacheKey);
+            console.log("💾 [ONLINE] Úspěšně staženo, aktualizuji cache.");
             setTrips(tripsWithSpent);
             localStorage.setItem(cacheKey, JSON.stringify(tripsWithSpent));
         }
     } catch (e) {
-        console.log("⚠️ [OFFLINE] Chyba sítě, spoléhám na cache.");
+        console.log("☠️ [CRITICAL] Úplný výpadek sítě, spoléhám na cache.");
     } finally {
         setLoading(false);
     }
