@@ -2,11 +2,11 @@
 
 import React, { useState, useEffect, useCallback, use, useMemo } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation'; // Přidáno useSearchParams
 import BudgetView from '@/components/BudgetView';
 import { supabase } from '@/lib/supabaseClient';
 
-// --- IKONY ---
+// --- IKONY (Zůstávají stejné) ---
 const ArrowLeft = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>;
 const ClockIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
 const ListIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>;
@@ -50,12 +50,15 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
   const resolvedParams = use(params);
   const shareCodeParam = resolvedParams.id; 
   const router = useRouter();
+  const searchParams = useSearchParams(); // Přidáno pro čtení ?tab=settings
+  
+  // Inicializace tabu podle URL
+  const [activeTab, setActiveTab] = useState<'plan' | 'budget' | 'info' | 'settings'>('plan');
   
   const [trip, setTrip] = useState<Trip | null>(null);
-  const [activeTab, setActiveTab] = useState<'plan' | 'budget' | 'info' | 'settings'>('plan');
   const [loading, setLoading] = useState(true);
 
-  // Stavy
+  // Stavy formulářů
   const [newEventTitle, setNewEventTitle] = useState("");
   const [newEventTime, setNewEventTime] = useState("");
   const [newEventDate, setNewEventDate] = useState("");
@@ -72,9 +75,14 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
   const [editBudget, setEditBudget] = useState("");
   const [editMapLink, setEditMapLink] = useState("");
 
+  // Efekt pro nastavení záložky po načtení
+  useEffect(() => {
+      const tabParam = searchParams.get('tab');
+      if (tabParam === 'settings') setActiveTab('settings');
+  }, [searchParams]);
+
   const fetchTripData = useCallback(async () => {
     try {
-        // Hledáme podle share_code nebo ID
         const { data: tripData, error: tripError } = await supabase.from('trips').select('*').eq('share_code', shareCodeParam).single();
         
         if (tripError || !tripData) { 
@@ -178,21 +186,12 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
       }
   };
 
-  // --- ZMĚNA: Kopíruje celou URL adresu ---
-  const copyShareCode = () => { 
-      if(trip?.shareCode) { 
-          const url = `https://tripenzi.netlify.app/trip/${trip.shareCode}`;
-          navigator.clipboard.writeText(url); 
-          alert("Odkaz zkopírován: " + url); 
-      } 
-  };
+  const copyShareCode = () => { if(trip?.shareCode) { const url = `https://tripenzi.netlify.app/trip/${trip.shareCode}`; navigator.clipboard.writeText(url); alert("Odkaz zkopírován: " + url); } };
 
   if (loading || !trip) return <div className="p-10 text-center flex justify-center items-center h-screen"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div></div>;
 
   const headerStyle = trip.coverImage ? { backgroundImage: `url(${trip.coverImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {};
   const headerClass = trip.coverImage ? "relative text-white" : `bg-gradient-to-r ${trip.color} text-white relative`;
-
-  // --- URL pro QR kód ---
   const shareUrl = `https://tripenzi.netlify.app/trip/${trip.shareCode}`;
 
   return (
