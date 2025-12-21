@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 
-// IKONY
+// --- IKONY ---
 const TrashIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>;
 const BackIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>;
 const CheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>;
@@ -101,63 +101,45 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
 
   const { calculatedTotal, balances, debts, statsByCategory, statsByPerson } = useMemo(() => {
     let sumTotal = 0;
-    const bals: Record<string, number> = {}; 
-    const cats: Record<string, number> = {};
-    const pers: Record<string, number> = {};
-    
+    const bals: Record<string, number> = {}; const cats: Record<string, number> = {}; const pers: Record<string, number> = {};
     activeParticipants.forEach(p => { bals[p] = 0; pers[p] = 0; });
 
     safeExpenses.forEach(expense => {
       const rate = expense.exchangeRate || 1;
       const amountInBase = expense.amount * rate;
-
       if (!expense.isSettlement) {
         sumTotal += amountInBase;
         const cat = expense.category || 'other';
         cats[cat] = (cats[cat] || 0) + amountInBase;
       }
-
       const payerName = activeParticipants.includes(expense.payer) ? expense.payer : null;
       if (payerName) bals[payerName] += amountInBase;
 
-      const method = expense.splitMethod || 'equal';
+      // --- ZÁSADNÍ OPRAVA LOGIKY PRO SPLÁCENÍ ---
+      // Pokud je to "Settlement" (vyrovnání), musíme to brát jako PŘESNÝ PŘEVOD (exact), 
+      // i když v databázi chybí označení metody. Jinak se to dělí mezi oba a dluh se jen půlí.
+      const method = expense.isSettlement ? 'exact' : (expense.splitMethod || 'equal');
+
       if (method === 'equal') {
         let targets = expense.forWhom || (expense.splitDetails ? Object.keys(expense.splitDetails) : []);
         if (!Array.isArray(targets)) targets = [];
-        
-        const validTargets = targets.filter(t => activeParticipants.includes(t));
-        const finalTargets = validTargets.length > 0 ? validTargets : activeParticipants;
-        const share = amountInBase / finalTargets.length;
-        
-        finalTargets.forEach(person => { 
-            bals[person] -= share; 
-            if(!expense.isSettlement) pers[person] += share; 
-        });
+        const validTargets = targets.length > 0 ? targets.filter(t => activeParticipants.includes(t)) : activeParticipants;
+        const share = amountInBase / (validTargets.length || 1);
+        validTargets.forEach(person => { bals[person] -= share; if(!expense.isSettlement) pers[person] += share; });
       } else if (method === 'exact') {
         Object.entries(expense.splitDetails || {}).forEach(([person, val]) => { 
-            if (activeParticipants.includes(person)) {
-                const valInBase = val * rate;
-                bals[person] -= valInBase;
-                if(!expense.isSettlement) pers[person] += valInBase;
-            }
+            if (activeParticipants.includes(person)) { const valInBase = val * rate; bals[person] -= valInBase; if(!expense.isSettlement) pers[person] += valInBase; }
         });
       } else if (method === 'shares') {
         const details = expense.splitDetails || {};
         const totalShares = Object.values(details).reduce((sum, val) => sum + val, 0);
-        if (totalShares > 0) {
-            Object.entries(details).forEach(([person, weight]) => {
-                if (activeParticipants.includes(person)) {
-                    const share = (amountInBase * weight) / totalShares;
-                    bals[person] -= share;
-                    if(!expense.isSettlement) pers[person] += share;
-                }
-            });
-        }
+        if (totalShares > 0) { Object.entries(details).forEach(([person, weight]) => { if (activeParticipants.includes(person)) { const share = (amountInBase * weight) / totalShares; bals[person] -= share; if(!expense.isSettlement) pers[person] += share; }}); }
       }
     });
 
-    let debtors = Object.entries(bals).filter(([, b]) => b < -0.1).sort(([, a], [, b]) => a - b);
-    let creditors = Object.entries(bals).filter(([, b]) => b > 0.1).sort(([, a], [, b]) => b - a);
+    // Tolerance 1.0 (ignorujeme rozdíly menší než koruna)
+    let debtors = Object.entries(bals).filter(([, b]) => b < -0.99).sort(([, a], [, b]) => a - b);
+    let creditors = Object.entries(bals).filter(([, b]) => b > 0.99).sort(([, a], [, b]) => b - a);
     const transactions = [];
     let i = 0; let j = 0;
     while (i < debtors.length && j < creditors.length) {
@@ -165,12 +147,9 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
         const creditor = creditors[j];
         const amount = Math.min(Math.abs(debtor[1]), creditor[1]);
         transactions.push({ from: debtor[0], to: creditor[0], amount: amount });
-        debtor[1] += amount;
-        creditor[1] -= amount;
-        if (Math.abs(debtor[1]) < 0.1) i++;
-        if (creditor[1] < 0.1) j++;
+        debtor[1] += amount; creditor[1] -= amount;
+        if (Math.abs(debtor[1]) < 0.99) i++; if (creditor[1] < 0.99) j++;
     }
-
     return { calculatedTotal: sumTotal, balances: bals, debts: transactions, statsByCategory: cats, statsByPerson: pers };
   }, [safeExpenses, activeParticipants, baseCurrency]);
 
@@ -181,32 +160,10 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
       navigator.clipboard.writeText(text).then(() => alert("Zkopírováno! 📋"));
   };
 
-  const handleCalcInput = (val: string) => {
-    if (val === 'C') setDisplayValue("0");
-    else if (val === 'back') setDisplayValue(prev => prev.length > 1 ? prev.slice(0, -1) : "0");
-    else if (['+', '-', '*', '/'].includes(val)) setDisplayValue(prev => prev + val);
-    else setDisplayValue(prev => prev === "0" && val !== '.' ? val : prev + val);
-  };
-
-  const calculateResult = () => {
-    try {
-        const result = new Function('return ' + displayValue)(); 
-        return Number(result) || 0;
-    } catch { return 0; }
-  };
-
-  const handleEqual = () => setDisplayValue(String(calculateResult()));
-
-  const goToStep2 = () => {
-    const res = calculateResult();
-    if (res <= 0) return;
-    setDisplayValue(String(res));
-    setStep(2);
-  };
-
   const openSettleUp = (from: string, to: string, amount: number) => {
       setTitle(`Splátka pro ${to}`);
-      setDisplayValue(String(Math.round(amount))); 
+      // Použijeme Math.ceil (zaokrouhlit nahoru), aby se dluh vyrovnal úplně a nezbyly haléře
+      setDisplayValue(String(Math.ceil(amount))); 
       setCurrency(baseCurrency);
       setExchangeRate(1);
       setPayer(from);
@@ -216,61 +173,49 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
       setStep(1); 
   };
 
+  const handleCalcInput = (val: string) => {
+    if (val === 'C') setDisplayValue("0");
+    else if (val === 'back') setDisplayValue(prev => prev.length > 1 ? prev.slice(0, -1) : "0");
+    else if (['+', '-', '*', '/'].includes(val)) setDisplayValue(prev => prev + val);
+    else setDisplayValue(prev => prev === "0" && val !== '.' ? val : prev + val);
+  };
+
+  const calculateResult = () => { try { return Number(new Function('return ' + displayValue)()) || 0; } catch { return 0; } };
+  const handleEqual = () => setDisplayValue(String(calculateResult()));
+  const goToStep2 = () => { const res = calculateResult(); if (res > 0) { setDisplayValue(String(res)); setStep(2); } };
+  
   const handleSubmit = () => {
-    const finalAmount = calculateResult();
-    if (splitMethod === 'exact' && Math.abs(finalAmount - Object.values(splitValues).reduce((a,b)=>a+(Number(b)||0),0)) > 0.1) {
-        alert("Částky nesedí s celkovou sumou!");
-        return;
-    }
-    if (!title) { alert("Vyplň název!"); return; }
-    
-    const finalPayer = payer || activeParticipants[0];
-    let finalSplitDetails: Record<string, number> = {};
-
+    // Tady se vytváří objekt pro uložení
+    let finalSplitDetails = splitValues;
     if (isSettlement) {
+        // Pokud je to vyrovnání, vytvoříme přesný split: Příjemce dostane celou částku.
+        finalSplitDetails = {};
         activeParticipants.forEach(p => finalSplitDetails[p] = 0);
-        finalSplitDetails[settleReceiver] = finalAmount;
-    } else {
-        if (splitMethod === 'equal') selectedEqual.forEach(p => finalSplitDetails[p] = 1);
-        else finalSplitDetails = { ...splitValues };
+        finalSplitDetails[settleReceiver] = calculateResult();
     }
 
-    onAddExpense({
-        title: isSettlement ? "Vyrovnání dluhu" : title,
-        amount: finalAmount,
-        currency,
-        exchangeRate,
-        payer: finalPayer,
-        category: isSettlement ? 'settlement' : category,
-        splitMethod: isSettlement ? 'exact' : splitMethod,
-        splitDetails: finalSplitDetails,
-        isSettlement
+    onAddExpense({ 
+        title: isSettlement ? "Vyrovnání dluhu" : title, 
+        amount: calculateResult(), 
+        currency, 
+        exchangeRate, 
+        payer: payer || activeParticipants[0], 
+        category: isSettlement ? 'settlement' : category, 
+        splitMethod: isSettlement ? 'exact' : splitMethod, 
+        splitDetails: finalSplitDetails, 
+        isSettlement 
     });
-    
-    setIsWizardOpen(false);
-    setIsSettlement(false);
-    setStep(1);
-    setDisplayValue("0");
-    setTitle("");
-    setCurrency(baseCurrency);
-    setSplitValues(activeParticipants.reduce((acc, p) => ({...acc, [p]: 0}), {}));
+    setIsWizardOpen(false); setIsSettlement(false); setStep(1); setDisplayValue("0"); setTitle("");
   };
 
-  const handleFilterPerson = (name: string) => {
-      if (filterPerson === name) setFilterPerson(null);
-      else setFilterPerson(name);
-  };
+  const handleFilterPerson = (name: string) => { if (filterPerson === name) setFilterPerson(null); else setFilterPerson(name); };
 
   const filteredExpenses = safeExpenses.slice().reverse().filter(e => {
       if (!filterPerson) return true;
       if (e.payer === filterPerson) return true;
       const method = e.splitMethod || 'equal';
-      if (method === 'equal') {
-          const targets = e.forWhom || (e.splitDetails && Object.keys(e.splitDetails)) || [];
-          return targets.includes(filterPerson);
-      } else {
-          return (e.splitDetails?.[filterPerson] || 0) > 0;
-      }
+      if (method === 'equal') { const targets = e.forWhom || (e.splitDetails && Object.keys(e.splitDetails)) || []; return targets.includes(filterPerson); } 
+      else { return (e.splitDetails?.[filterPerson] || 0) > 0; }
   });
 
   return (
@@ -300,23 +245,17 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
                         )}
                     </div>
 
-                    <div className="mb-6">
-                        <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 px-2">
-                            {activeParticipants.map(name => {
-                                const bal = balances[name] || 0;
-                                const isZero = Math.abs(bal) < 1;
-                                const isPlus = bal >= 1;
-                                return (
-                                    <button key={name} onClick={() => handleFilterPerson(name)} className={`flex flex-col items-center min-w-[70px] p-2 rounded-xl border transition ${filterPerson === name ? 'bg-gray-100 border-gray-400' : 'bg-white border-gray-100'}`}>
-                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold mb-1 ${filterPerson === name ? 'bg-black text-white' : 'bg-gray-100 text-gray-600'}`}>{name.charAt(0)}</div>
-                                        <span className="text-[10px] font-bold text-gray-900">{name}</span>
-                                        <span className={`text-[10px] font-bold ${isZero ? 'text-black' : isPlus ? 'text-green-600' : 'text-red-500'}`}>
-                                            {isZero ? '0' : (isPlus ? '+' : '') + Math.round(bal)}
-                                        </span>
-                                    </button>
-                                )
-                            })}
-                        </div>
+                    <div className="mb-6 flex gap-3 overflow-x-auto no-scrollbar pb-2 px-2">
+                        {activeParticipants.map(name => {
+                            const bal = balances[name] || 0;
+                            return (
+                                <button key={name} onClick={() => handleFilterPerson(name)} className={`flex flex-col items-center min-w-[70px] p-2 rounded-xl border transition ${filterPerson === name ? 'bg-gray-100 border-gray-400' : 'bg-white border-gray-100'}`}>
+                                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold mb-1 bg-slate-100 text-slate-700">{name.charAt(0)}</div>
+                                    <span className="text-[10px] font-bold text-gray-900">{name}</span>
+                                    <span className={`text-[10px] font-bold ${bal >= 0.5 ? 'text-green-600' : bal <= -0.5 ? 'text-red-500' : 'text-gray-400'}`}>{Math.round(bal)}</span>
+                                </button>
+                            )
+                        })}
                     </div>
 
                     {debts.length > 0 && !filterPerson && (
@@ -326,13 +265,8 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
                                 {debts.map((t, idx) => (
                                     Math.round(t.amount) > 0 && (
                                     <div key={idx} className="bg-white p-3 rounded-xl border border-gray-200 flex justify-between items-center shadow-sm">
-                                        <div className="flex items-center gap-2 text-sm text-gray-700">
-                                            <span className="font-bold">{t.from}</span> <span className="text-gray-400">→</span> <span className="font-bold">{t.to}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="font-bold text-blue-600">{Math.round(t.amount)} {baseCurrency}</span>
-                                            <button onClick={() => openSettleUp(t.from, t.to, t.amount)} className="text-[10px] bg-blue-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-blue-700 shadow-md active:scale-95">Splatit</button>
-                                        </div>
+                                        <div className="flex items-center gap-2 text-sm text-gray-700"><span className="font-bold">{t.from}</span> → <span className="font-bold">{t.to}</span></div>
+                                        <div className="flex items-center gap-2"><span className="font-bold text-blue-600">{Math.round(t.amount)} {baseCurrency}</span><button onClick={() => openSettleUp(t.from, t.to, t.amount)} className="text-[10px] bg-blue-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-blue-700 shadow-md active:scale-95">Splatit</button></div>
                                     </div>
                                     )
                                 ))}
@@ -345,14 +279,13 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
                         {filterPerson && <button onClick={() => setFilterPerson(null)} className="text-xs text-blue-600 font-bold flex items-center gap-1"><FilterIcon /> Zrušit filtr</button>}
                     </h3>
                     <div className="space-y-3 pb-20">
-                        {filteredExpenses.length === 0 && <p className="text-center text-gray-400 text-sm py-4">Žádné transakce.</p>}
                         {filteredExpenses.map((expense) => {
                         const CatIcon = expense.isSettlement ? <SettleIcon /> : (CATEGORIES.find(c => c.id === expense.category)?.icon || <ShopIcon />);
                         const isSettlement = expense.isSettlement;
                         return (
                             <div key={expense.id} onClick={() => setSelectedExpense(expense)} className="bg-white border border-gray-200 p-4 rounded-xl shadow-sm flex justify-between items-center cursor-pointer active:scale-95 transition">
                                 <div className="flex items-center gap-3">
-                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg border ${isSettlement ? 'bg-green-100 border-green-200' : 'bg-gray-50 border-gray-100'}`}>{CatIcon}</div>
+                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg border bg-slate-50 border-slate-100`}>{CatIcon}</div>
                                     <div>
                                         <p className="font-bold text-gray-900">{expense.title}</p>
                                         <p className="text-[10px] text-gray-600 font-bold bg-gray-100 px-1.5 py-0.5 rounded w-fit border border-gray-200">
@@ -362,7 +295,7 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
                                 </div>
                                 <div className="text-right">
                                     <span className={`font-bold block ${isSettlement ? 'text-green-600' : 'text-gray-900'}`}>
-                                        {isSettlement ? '' : '-'}{Math.round(expense.amount * (expense.exchangeRate || 1))} {baseCurrency}
+                                        {isSettlement ? '+' : '-'}{Math.round(expense.amount * (expense.exchangeRate || 1))} {baseCurrency}
                                     </span>
                                 </div>
                             </div>
@@ -385,6 +318,7 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
                             ))}
                         </div>
                     </div>
+                    {/* VRÁCENÝ GRAF KATEGORIÍ */}
                     <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
                         <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><ChartIcon /> Útrata podle kategorií</h3>
                         <div className="space-y-3">
@@ -403,37 +337,10 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
                 </div>
             )}
 
-            <button onClick={() => { setIsWizardOpen(true); setIsSettlement(false); setStep(1); setDisplayValue("0"); setTitle(""); }} className="fixed bottom-24 right-6 w-16 h-16 bg-black text-white rounded-full shadow-2xl flex items-center justify-center text-3xl active:scale-90 transition z-40 hover:bg-gray-800 border-2 border-white">
+            <button onClick={() => { setIsWizardOpen(true); setIsSettlement(false); setStep(1); setDisplayValue("0"); setTitle(""); }} className="fixed bottom-8 right-6 w-16 h-16 bg-black text-white rounded-full shadow-2xl flex items-center justify-center text-3xl active:scale-90 transition z-40 hover:bg-gray-800 border-2 border-white">
                 <span className="mb-1">+</span>
             </button>
         </>
-      )}
-
-      {selectedExpense && (
-          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setSelectedExpense(null)}>
-              <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl relative animate-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
-                  <button onClick={() => setSelectedExpense(null)} className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full hover:bg-gray-200"><XIcon /></button>
-                  <h3 className="text-2xl font-bold mb-1">{selectedExpense.title}</h3>
-                  <p className="text-gray-500 font-bold mb-6 text-xl">{selectedExpense.amount} {selectedExpense.currency}</p>
-                  
-                  <div className="space-y-4 text-sm">
-                      <div className="flex justify-between border-b pb-2"><span className="text-gray-500">Platil</span><span className="font-bold">{selectedExpense.payer}</span></div>
-                      {!selectedExpense.isSettlement && <div className="flex justify-between border-b pb-2"><span className="text-gray-500">Kategorie</span><span className="font-bold capitalize">{selectedExpense.category}</span></div>}
-                      {selectedExpense.currency !== baseCurrency && (<div className="flex justify-between border-b pb-2"><span className="text-gray-500">Kurz</span><span className="font-bold">1 {selectedExpense.currency} = {selectedExpense.exchangeRate} {baseCurrency}</span></div>)}
-                      <div>
-                          <span className="text-gray-500 block mb-2">{selectedExpense.isSettlement ? 'Příjemce' : 'Rozdělení mezi'}</span>
-                          <div className="bg-gray-50 p-3 rounded-xl space-y-1">
-                             {selectedExpense.splitMethod === 'equal' ? (
-                                <div className="flex flex-wrap gap-1">{(selectedExpense.forWhom || Object.keys(selectedExpense.splitDetails || {})).map(p => <span key={p} className="bg-white px-2 py-1 rounded border text-xs">{p}</span>)}</div>
-                             ) : (
-                                Object.entries(selectedExpense.splitDetails || {}).map(([name, val]) => (val > 0 && <div key={name} className="flex justify-between text-xs"><span>{name}</span><span className="font-bold">{val} {selectedExpense.splitMethod==='shares'?'podílů':selectedExpense.currency}</span></div>))
-                             )}
-                          </div>
-                      </div>
-                  </div>
-                  <button onClick={() => { onDeleteExpense(selectedExpense.id); setSelectedExpense(null); }} className="w-full mt-6 py-3 border-2 border-red-100 text-red-600 font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-red-50"><TrashIcon /> Smazat</button>
-              </div>
-          </div>
       )}
 
       {isWizardOpen && (
@@ -447,26 +354,11 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
             {step === 1 && (
                 <div className="flex-1 flex flex-col">
                     <div className="flex-1 flex flex-col justify-end items-end p-6 bg-gray-50">
-                        {!isSettlement && (
-                            <div className="relative mb-4">
-                                <button onClick={() => setIsCurrencyDropdownOpen(!isCurrencyDropdownOpen)} className="flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-full border bg-white shadow-sm border-gray-200 text-gray-800">
-                                    {currency} <ChevronDown />
-                                    {ratesLoading && <span className="animate-spin"><RefreshIcon/></span>}
-                                </button>
-                                {isCurrencyDropdownOpen && (
-                                    <div className="absolute top-8 right-0 bg-white border border-gray-200 shadow-xl rounded-xl p-2 grid grid-cols-2 gap-2 z-50 w-48">
-                                        {CURRENCIES.map(curr => (
-                                            <button key={curr} onClick={() => { setCurrency(curr); setIsCurrencyDropdownOpen(false); }} className={`px-2 py-1 rounded text-sm font-bold text-left hover:bg-gray-50 ${currency===curr ? 'text-blue-600' : 'text-gray-600'}`}>{curr}</button>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        )}
                         <div className="text-6xl font-black text-gray-900 tracking-tighter break-all text-right w-full drop-shadow-sm">
                             {displayValue} <span className="text-2xl text-gray-400 font-medium">{currency}</span>
                         </div>
                     </div>
-                    {/* OPRAVENÁ MŘÍŽKA KALKULAČKY 4x5 */}
+                    {/* OPRAVENÁ MŘÍŽKA KALKULAČKY */}
                     <div className="bg-white p-3 pb-8 grid grid-cols-4 gap-3 shadow-[0_-10px_40px_rgba(0,0,0,0.05)] border-t border-gray-200">
                         {['C', '/', '*', 'back', '7', '8', '9', '-', '4', '5', '6', '+'].map(btn => (
                             <button key={btn} onClick={() => handleCalcInput(btn)} className="aspect-square rounded-2xl bg-gray-50 hover:bg-gray-200 font-bold text-xl text-gray-700 border border-gray-100 flex items-center justify-center">
@@ -474,15 +366,14 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
                             </button>
                         ))}
                         
-                        {/* 4. Řádek */}
                         <button onClick={() => handleCalcInput('1')} className="aspect-square rounded-2xl bg-white hover:bg-gray-100 font-bold text-xl text-gray-700 border border-gray-100 flex items-center justify-center">1</button>
                         <button onClick={() => handleCalcInput('2')} className="aspect-square rounded-2xl bg-white hover:bg-gray-100 font-bold text-xl text-gray-700 border border-gray-100 flex items-center justify-center">2</button>
                         <button onClick={() => handleCalcInput('3')} className="aspect-square rounded-2xl bg-white hover:bg-gray-100 font-bold text-xl text-gray-700 border border-gray-100 flex items-center justify-center">3</button>
                         <button onClick={handleEqual} className="aspect-square rounded-2xl bg-orange-100 hover:bg-orange-200 text-orange-600 font-bold text-xl border border-orange-200 flex items-center justify-center">=</button>
-                        
-                        {/* 5. Řádek */}
+
                         <button onClick={() => handleCalcInput('0')} className="col-span-2 aspect-[2/1] rounded-2xl bg-white hover:bg-gray-100 font-bold text-xl text-gray-700 border border-gray-100 flex items-center justify-center">0</button>
                         <button onClick={() => handleCalcInput('.')} className="aspect-square rounded-2xl bg-white hover:bg-gray-100 font-bold text-xl text-gray-700 border border-gray-100 flex items-center justify-center">.</button>
+                        
                         <button onClick={isSettlement ? handleSubmit : goToStep2} className="aspect-square rounded-2xl bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shadow-lg shadow-blue-200/50">
                             <CheckIcon />
                         </button>
@@ -490,7 +381,6 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
                 </div>
             )}
             
-            {/* Krok 2 (Detaily) */}
             {step === 2 && !isSettlement && (
                 <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-gray-50">
                     <div className="text-center bg-white p-6 rounded-3xl shadow-sm border border-gray-200">

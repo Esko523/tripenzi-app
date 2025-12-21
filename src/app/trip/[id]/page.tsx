@@ -1,26 +1,29 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, use, useMemo } from 'react'; // Přidáno useMemo
+import React, { useState, useEffect, useCallback, use, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import BudgetView from '@/components/BudgetView';
 import { supabase } from '@/lib/supabaseClient';
 
-// --- IKONY ---
+// --- IKONY (Zůstávají stejné) ---
+// ... Zkopíruj si sem prosím ikony z minula, abychom šetřili místo. 
+// Důležité je mít TrashIcon, ClockIcon, MapIcon, atd.
+// Pro jistotu zde jsou ty nejdůležitější:
 const ArrowLeft = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>;
 const ClockIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
 const ListIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>;
 const WalletIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>;
 const InfoIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="16" y2="12"/><line x1="12" x2="12.01" y1="8" y2="8"/></svg>;
 const SettingsIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>;
-const UsersIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
-const PhotoIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>;
 const CheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>;
-const MapIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" x2="9" y1="3" y2="18"/><line x1="15" x2="15" y1="6" y2="21"/></svg>;
-const Share2Icon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></svg>;
+const UsersIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
 const TrashIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>;
+const Share2Icon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></svg>;
+const MapIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" x2="9" y1="3" y2="18"/><line x1="15" x2="15" y1="6" y2="21"/></svg>;
+const PhotoIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>;
 
-type Event = { id: number; time: string; title: string; date?: string; };
+type Event = { id: number; time: string; title: string; date?: string; color?: string; }; // Nové: color
 type Participant = { id: number; name: string; };
 type SplitMethod = 'equal' | 'exact' | 'shares';
 type Expense = { 
@@ -43,6 +46,8 @@ const GRADIENTS = [
   "from-blue-500 to-cyan-400", "from-purple-500 to-indigo-500", "from-green-400 to-emerald-500",
   "from-yellow-400 to-orange-500", "from-pink-500 to-rose-500", "from-gray-700 to-black",
 ];
+// Barvy teček pro plán
+const DOT_COLORS = ["bg-blue-500", "bg-red-500", "bg-green-500", "bg-yellow-500", "bg-purple-500", "bg-slate-500"];
 const CURRENCIES = ["CZK", "EUR", "USD", "PLN", "HRK", "GBP", "VND", "IDR", "HUF", "THB"];
 
 export default function TripDetail({ params }: { params: Promise<{ id: string }> }) {
@@ -54,13 +59,13 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
   const [activeTab, setActiveTab] = useState<'plan' | 'budget' | 'info' | 'settings'>('plan');
   const [loading, setLoading] = useState(true);
 
-  // Stavy
   const [newEventTitle, setNewEventTitle] = useState("");
   const [newEventTime, setNewEventTime] = useState("");
   const [newEventDate, setNewEventDate] = useState("");
+  const [newEventColor, setNewEventColor] = useState("bg-blue-500"); // Default barva
+  
   const [notes, setNotes] = useState("");
   const [photoLink, setPhotoLink] = useState("");
-  const [isEditingLink, setIsEditingLink] = useState(false);
   const [newParticipant, setNewParticipant] = useState("");
   
   const [editName, setEditName] = useState("");
@@ -126,7 +131,6 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
 
   useEffect(() => { fetchTripData(); }, [fetchTripData]);
 
-  // Seskupování eventů
   const groupedEvents = useMemo(() => {
       if (!trip?.events) return {};
       return trip.events.reduce((groups, event) => {
@@ -146,13 +150,25 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
   const saveDetails = async () => { const { data } = await supabase.from('trip_details').select('id').eq('trip_id', tripId).maybeSingle(); if (data) await supabase.from('trip_details').update({ notes, photo_link: photoLink }).eq('trip_id', tripId); else await supabase.from('trip_details').insert([{ trip_id: tripId, notes, photo_link: photoLink }]); };
   const changeColor = async (newColor: string) => { await supabase.from('trips').update({ color: newColor, cover_image: null }).eq('id', tripId); fetchTripData(); };
   
-  const addEvent = async (e: React.FormEvent) => { e.preventDefault(); if (!newEventTitle || !newEventTime || !trip) return; await supabase.from('events').insert([{ trip_id: tripId, title: newEventTitle, time: newEventTime, date: newEventDate || 'Neurčeno' }]); setNewEventTitle(""); setNewEventTime(""); fetchTripData(); };
+  const addEvent = async (e: React.FormEvent) => { 
+      e.preventDefault(); if (!newEventTitle || !newEventTime || !trip) return; 
+      await supabase.from('events').insert([{ trip_id: tripId, title: newEventTitle, time: newEventTime, date: newEventDate || 'Neurčeno', color: newEventColor }]); 
+      setNewEventTitle(""); setNewEventTime(""); fetchTripData(); 
+  };
   const deleteEvent = async (id: number) => { await supabase.from('events').delete().eq('id', id); fetchTripData(); };
 
   const handleUpdateSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     const { error } = await supabase.from('trips').update({ name: editName, date: editDate, base_currency: editCurrency, total_budget: editBudget ? Number(editBudget) : 0, cover_image: editImage, map_link: editMapLink }).eq('id', tripId);
     if (!error) { alert("Nastavení uloženo! ✅"); fetchTripData(); } else { alert("Chyba: " + error.message); }
+  };
+
+  const handleDeleteTrip = async () => {
+      if(confirm("Opravdu smazat celý trip? Tato akce je nevratná.")) {
+          const { error } = await supabase.from('trips').delete().eq('id', tripId);
+          if(!error) router.push('/');
+          else alert("Chyba při mazání: " + error.message);
+      }
   };
 
   const copyShareCode = () => { if(trip?.shareCode) { navigator.clipboard.writeText(trip.shareCode); alert("Kód zkopírován: " + trip.shareCode); } };
@@ -181,10 +197,10 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
 
       <div className="-mt-8 bg-white rounded-t-3xl min-h-screen relative z-10 flex flex-col">
         <div className="flex border-b border-gray-100">
-          <button onClick={() => setActiveTab('plan')} className={`flex-1 py-4 text-[10px] font-bold flex flex-col items-center gap-1 ${activeTab === 'plan' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400'}`}><ListIcon /> PLÁN</button>
-          <button onClick={() => setActiveTab('budget')} className={`flex-1 py-4 text-[10px] font-bold flex flex-col items-center gap-1 ${activeTab === 'budget' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400'}`}><WalletIcon /> ROZPOČET</button>
-          <button onClick={() => setActiveTab('info')} className={`flex-1 py-4 text-[10px] font-bold flex flex-col items-center gap-1 ${activeTab === 'info' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400'}`}><InfoIcon /> INFO</button>
-          <button onClick={() => setActiveTab('settings')} className={`flex-1 py-4 text-[10px] font-bold flex flex-col items-center gap-1 ${activeTab === 'settings' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400'}`}><SettingsIcon /> NASTAVENÍ</button>
+          <button onClick={() => setActiveTab('plan')} className={`flex-1 py-4 text-xs font-bold flex flex-col items-center gap-1 ${activeTab === 'plan' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400'}`}><ListIcon /> PLÁN</button>
+          <button onClick={() => setActiveTab('budget')} className={`flex-1 py-4 text-xs font-bold flex flex-col items-center gap-1 ${activeTab === 'budget' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400'}`}><WalletIcon /> ROZPOČET</button>
+          <button onClick={() => setActiveTab('info')} className={`flex-1 py-4 text-xs font-bold flex flex-col items-center gap-1 ${activeTab === 'info' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400'}`}><InfoIcon /> INFO</button>
+          <button onClick={() => setActiveTab('settings')} className={`flex-1 py-4 text-xs font-bold flex flex-col items-center gap-1 ${activeTab === 'settings' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400'}`}><SettingsIcon /> NASTAVENÍ</button>
         </div>
 
         <div className="p-6 flex-1">
@@ -199,7 +215,8 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
                       <div className="space-y-0 border-l-2 border-gray-100 ml-2 pl-4 relative">
                           {groupedEvents[date].map((event) => (
                             <div key={event.id} className="relative group pb-6 last:pb-0">
-                              <div className="absolute -left-[21px] top-1 w-3 h-3 bg-blue-500 rounded-full border-2 border-white shadow-sm"></div>
+                              {/* ZDE SE POUŽÍVÁ BARVA */}
+                              <div className={`absolute -left-[21px] top-1 w-3 h-3 ${event.color || 'bg-blue-500'} rounded-full border-2 border-white shadow-sm`}></div>
                               <div className="flex justify-between items-start">
                                 <div><span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded mb-1 inline-block">{event.time}</span><p className="text-gray-900 font-medium">{event.title}</p></div>
                                 <button onClick={() => deleteEvent(event.id)} className="text-gray-300 hover:text-red-500 opacity-100"><TrashIcon /></button>
@@ -211,8 +228,17 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
               ))}
 
               <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-100 max-w-md mx-auto z-20">
-                <form onSubmit={addEvent} className="flex flex-col gap-2">
-                  <div className="flex gap-2"><input type="date" value={newEventDate} onChange={e => setNewEventDate(e.target.value)} className="bg-gray-100 rounded-xl px-3 py-3 font-bold text-xs focus:outline-blue-500 w-1/3" required /><input type="time" value={newEventTime} onChange={e => setNewEventTime(e.target.value)} className="bg-gray-100 rounded-xl px-3 py-3 font-bold text-xs focus:outline-blue-500 w-1/4" required /></div>
+                <form onSubmit={addEvent} className="flex flex-col gap-3">
+                  <div className="flex gap-2">
+                      <input type="date" value={newEventDate} onChange={e => setNewEventDate(e.target.value)} className="bg-gray-100 rounded-xl px-3 py-3 font-bold text-xs focus:outline-blue-500 w-1/3" required />
+                      <input type="time" value={newEventTime} onChange={e => setNewEventTime(e.target.value)} className="bg-gray-100 rounded-xl px-3 py-3 font-bold text-xs focus:outline-blue-500 w-1/4" required />
+                      {/* VÝBĚR BARVY */}
+                      <div className="flex gap-1 items-center bg-gray-100 rounded-xl px-2 flex-1 justify-center">
+                          {DOT_COLORS.map(c => (
+                              <button key={c} type="button" onClick={() => setNewEventColor(c)} className={`w-4 h-4 rounded-full ${c} ${newEventColor === c ? 'ring-2 ring-offset-1 ring-gray-400' : ''}`}></button>
+                          ))}
+                      </div>
+                  </div>
                   <div className="flex gap-2"><input type="text" value={newEventTitle} onChange={e => setNewEventTitle(e.target.value)} placeholder="Co podniknem?" className="bg-gray-100 rounded-xl px-4 py-3 flex-1 text-sm focus:outline-blue-500" required /><button type="submit" className="bg-blue-600 text-white w-12 rounded-xl flex items-center justify-center hover:bg-blue-700 shadow-lg font-bold text-xl">+</button></div>
                 </form>
               </div>
@@ -268,10 +294,11 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
                 <div><label className="block text-xs font-bold text-gray-500 mb-2">NEBO VYBER BARVU</label><div className="grid grid-cols-3 gap-2">{GRADIENTS.map((gradient) => (<button key={gradient} type="button" onClick={() => changeColor(gradient)} className={`h-12 rounded-lg bg-gradient-to-r ${gradient} flex items-center justify-center transform hover:scale-105 transition`}>{trip.color === gradient && !editImage && <div className="text-white drop-shadow-md"><CheckIcon /></div>}</button>))}</div></div>
                 <button type="submit" className="w-full py-4 bg-black text-white rounded-xl font-bold text-lg mt-4 shadow-lg hover:bg-gray-800 transition">ULOŽIT ZMĚNY</button>
               </form>
+              <button onClick={handleDeleteTrip} className="w-full py-4 bg-white border-2 border-red-100 text-red-600 rounded-xl font-bold text-lg mt-8 hover:bg-red-50 transition shadow-sm flex items-center justify-center gap-2"><TrashIcon /> SMAZAT TRIP</button>
             </div>
           )}
         </div>
       </div>
     </div>
   );
-}
+} 
