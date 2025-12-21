@@ -1,30 +1,35 @@
 import type { NextConfig } from "next";
 
-// Importujeme defaultní pravidla pro cache (obrázky, fonty, atd.)
-const runtimeCaching = require("next-pwa/cache");
+// Import výchozích pravidel
+const defaultRuntimeCaching = require("next-pwa/cache");
 
 const withPWA = require('next-pwa')({
   dest: 'public',
   register: true,
   skipWaiting: true,
-  disable: process.env.NODE_ENV === 'development',
+  disable: process.env.NODE_ENV === 'development', // PWA běží jen při 'npm run build' -> 'npm start'
   
-  // TOTO JE TO NOVÉ A DŮLEŽITÉ:
   runtimeCaching: [
-    ...runtimeCaching, // Převezmeme standardní pravidla
+    // 1. NAŠE PRAVIDLO PRO TRIPY (Dáme ho na začátek jako prioritu!)
     {
-      // Pravidlo pro detaily tripů (adresy obsahující /trip/)
-      urlPattern: /\/trip\/.*/i, 
-      handler: 'NetworkFirst', // Zkus internet. Když nejde, použij Cache.
+      // Chytáme všechny adresy, co začínají /trip/
+      urlPattern: ({ url }: { url: URL }) => url.pathname.startsWith('/trip/'),
+      
+      // Strategie: 'StaleWhileRevalidate' 
+      // (Zobraz hned to, co máš uložené v paměti, a na pozadí se zkus aktualizovat)
+      // To je pro offline režim nejrychlejší a nejspolehlivější.
+      handler: 'StaleWhileRevalidate',
+      
       options: {
-        cacheName: 'trip-pages',
+        cacheName: 'trip-pages-html',
         expiration: {
-          maxEntries: 50,
-          maxAgeSeconds: 60 * 60 * 24 * 30, // Pamatuj si to 30 dní
+          maxEntries: 100, // Ulož si posledních 100 navštívených tripů
+          maxAgeSeconds: 60 * 60 * 24 * 365, // Pamatuj si je rok
         },
-        networkTimeoutSeconds: 3, // Po 3 sekundách to vzdej a ukaž cache
       },
-    }
+    },
+    // 2. OSTATNÍ PRAVIDLA (Obrázky, fonty, zbytek webu)
+    ...defaultRuntimeCaching,
   ],
 });
 
