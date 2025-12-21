@@ -80,22 +80,45 @@ export default function TripenziApp() {
 
   const loadTrips = useCallback(async () => {
     if (!currentUser) return;
-    const { data: memberData } = await supabase.from('trip_members').select('trip_id').eq('user_id', currentUser.custom_id);
-    if (!memberData || memberData.length === 0) { setTrips([]); return; }
-    
-    const tripIds = memberData.map(m => m.trip_id);
-    const { data, error } = await supabase.from('trips').select('*').in('id', tripIds);
 
-    if (!error && data) {
-      const tripsWithSpent = await Promise.all(data.map(async (trip) => {
-          const { data: expenses } = await supabase.from('expenses').select('amount, exchange_rate, is_settlement').eq('trip_id', trip.id);
-          const spent = expenses?.reduce((sum, item) => {
-             if (item.is_settlement) return sum;
-             return sum + (item.amount * (item.exchange_rate || 1));
-          }, 0) || 0;
-          return { ...trip, spent: Math.round(spent) };
-      }));
-      setTrips(tripsWithSpent);
+    // 1. ZKUSÍME NAČÍST Z LOKÁLNÍ PAMĚTI (OFFLINE DATA)
+    const cachedTrips = localStorage.getItem(`trips_cache_${currentUser.custom_id}`);
+    if (cachedTrips) {
+        console.log("Načítám tripy z cache...");
+        setTrips(JSON.parse(cachedTrips));
+        setLoading(false); // Zobrazíme obsah hned
+    }
+
+    // 2. ZKUSÍME STÁHNOUT ČERSTVÁ DATA (ONLINE)
+    try {
+        const { data: memberData } = await supabase.from('trip_members').select('trip_id').eq('user_id', currentUser.custom_id);
+        if (!memberData || memberData.length === 0) { 
+            setTrips([]); 
+            localStorage.removeItem(`trips_cache_${currentUser.custom_id}`); // Smažeme cache, pokud nic nemáme
+            return; 
+        }
+        
+        const tripIds = memberData.map(m => m.trip_id);
+        const { data, error } = await supabase.from('trips').select('*').in('id', tripIds);
+
+        if (!error && data) {
+            const tripsWithSpent = await Promise.all(data.map(async (trip) => {
+                const { data: expenses } = await supabase.from('expenses').select('amount, exchange_rate, is_settlement').eq('trip_id', trip.id);
+                const spent = expenses?.reduce((sum, item) => {
+                    if (item.is_settlement) return sum;
+                    return sum + (item.amount * (item.exchange_rate || 1));
+                }, 0) || 0;
+                return { ...trip, spent: Math.round(spent) };
+            }));
+            
+            // 3. ULOŽÍME ČERSTVÁ DATA DO PAMĚTI PRO PŘÍŠTĚ
+            setTrips(tripsWithSpent);
+            localStorage.setItem(`trips_cache_${currentUser.custom_id}`, JSON.stringify(tripsWithSpent));
+        }
+    } catch (e) {
+        console.log("Jsem offline, používám data z cache.");
+    } finally {
+        setLoading(false);
     }
   }, [currentUser]);
 

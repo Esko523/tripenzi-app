@@ -95,22 +95,32 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
   };
 
   const fetchTripData = useCallback(async () => {
+    // ID pro cache klíč (použijeme shareCodeParam, je unikátní)
+    const cacheKey = `trip_detail_${shareCodeParam}`;
+
+    // 1. RYCHLÉ NAČTENÍ Z CACHE
+    const cachedData = localStorage.getItem(cacheKey);
+    if (cachedData) {
+        console.log("⚡ Načítám detail z cache");
+        setTrip(JSON.parse(cachedData));
+        setLoading(false);
+    }
+
     try {
+        // 2. STAŽENÍ DAT ZE SERVERU
         const { data: tripData, error: tripError } = await supabase.from('trips').select('*').eq('share_code', shareCodeParam).single();
-        if (tripError || !tripData) { 
-            if (!isNaN(Number(shareCodeParam))) {
-                 const { data: oldTrip } = await supabase.from('trips').select('*').eq('id', shareCodeParam).single();
-                 if (oldTrip && oldTrip.share_code) { router.push(`/trip/${oldTrip.share_code}`); return; }
-            }
-            router.push('/'); return; 
-        }
+        
+        // ... (zde je tvůj kód pro přesměrování při chybě, ten nech stejný) ...
+        if (tripError || !tripData) { /* ... tvá logika pro redirect ... */ return; }
 
         const tripId = tripData.id;
+        // Stáhneme všechna pod-data
         const { data: participantsData } = await supabase.from('participants').select('*').eq('trip_id', tripId);
         const { data: expensesData } = await supabase.from('expenses').select('*').eq('trip_id', tripId);
         const { data: detailsData } = await supabase.from('trip_details').select('*').eq('trip_id', tripId).maybeSingle();
         const { data: eventsData } = await supabase.from('events').select('*').eq('trip_id', tripId).order('date', { ascending: true }).order('time', { ascending: true });
 
+        // Zpracování výdajů (tvůj kód)
         const loadedExpenses: Expense[] = (expensesData || []).map((e: any) => ({
             id: e.id, title: e.title, amount: e.amount, currency: e.currency, exchangeRate: e.exchange_rate, payer: e.payer, category: e.category, splitMethod: e.split_method, splitDetails: e.split_details, forWhom: e.for_whom, isSettlement: e.is_settlement
         }));
@@ -120,7 +130,8 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
             return sum + (item.amount * (item.exchangeRate || 1));
         }, 0);
 
-        setTrip({
+        // Sestavení objektu
+        const fullTripData = {
             id: tripData.id,
             name: tripData.name,
             startDate: tripData.start_date,
@@ -140,9 +151,17 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
             events: eventsData || [], 
             participants: participantsData || [],
             expenses: loadedExpenses
-        });
+        };
 
-    } catch (err) { console.error(err); } finally { setLoading(false); }
+        // 3. AKTUALIZACE A ULOŽENÍ DO CACHE
+        setTrip(fullTripData);
+        localStorage.setItem(cacheKey, JSON.stringify(fullTripData)); // <--- TOTO JE TO KOUZLO
+
+    } catch (err) {
+        console.error("Chyba sítě / Offline mód:", err);
+    } finally {
+        setLoading(false);
+    }
   }, [shareCodeParam, router]);
 
   useEffect(() => { fetchTripData(); }, [fetchTripData]);
