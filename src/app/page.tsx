@@ -173,7 +173,7 @@ export default function TripenziApp() {
           const isOwner = trip.owner_id === currentUser.custom_id;
           
           return (
-          <Link href={`/trip/${trip.id}`} key={trip.id} className="block group">
+          <Link href={`/trip/${trip.share_code}`} key={trip.id} className="block group">
             <div className="bg-white rounded-[2rem] p-4 shadow-xl border border-slate-100 relative overflow-hidden transition-all hover:scale-[1.02] mb-6">
               
               {/* TLAČÍTKO SMAZAT */}
