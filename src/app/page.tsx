@@ -22,7 +22,6 @@ export default function TripenziApp() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [trips, setTrips] = useState<any[]>([]);
   
-  // STAVY PRO FILTR A ŘAZENÍ
   const [filter, setFilter] = useState<'all' | 'future' | 'active' | 'past'>('all');
   const [sortBy, setSortBy] = useState<'date' | 'alphabet'>('date');
 
@@ -53,29 +52,23 @@ export default function TripenziApp() {
       return textDate || "Bez data";
   };
 
-  // --- ODPOČET (Všechno žluté, jak jsi chtěl) ---
   const getCountdownStatus = (startDate?: string, endDate?: string) => {
       if (!startDate) return null;
-      
       const now = new Date();
       const start = new Date(startDate);
       const end = endDate ? new Date(endDate) : new Date(start);
-      
       end.setHours(23, 59, 59);
       start.setHours(0, 0, 0);
 
       const diffStart = start.getTime() - now.getTime();
       const baseStyle = "bg-yellow-400 text-yellow-900 border-yellow-200";
 
-      // 1. Budoucí
       if (diffStart > 0) {
           const days = Math.floor(diffStart / (1000 * 60 * 60 * 24));
           const hours = Math.floor((diffStart % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
           if (days > 0) return { text: `⏳ Za ${days} dní`, style: baseStyle };
           return { text: `⏳ Za ${hours} hod`, style: baseStyle };
       }
-
-      // 2. Probíhající
       if (now <= end) {
          const totalDuration = end.getTime() - start.getTime();
          const totalDays = Math.ceil(totalDuration / (1000 * 60 * 60 * 24)) || 1;
@@ -83,8 +76,6 @@ export default function TripenziApp() {
          const currentDay = Math.floor(elapsed / (1000 * 60 * 60 * 24)) + 1;
          return { text: `🚀 Den ${currentDay}/${totalDays}`, style: baseStyle };
       }
-
-      // 3. Minulost
       return { text: "🏁 Skončilo", style: baseStyle };
   };
 
@@ -92,7 +83,6 @@ export default function TripenziApp() {
     if (!currentUser) return;
     const { data: memberData } = await supabase.from('trip_members').select('trip_id').eq('user_id', currentUser.custom_id);
     if (!memberData || memberData.length === 0) { setTrips([]); return; }
-    
     const tripIds = memberData.map(m => m.trip_id);
     const { data, error } = await supabase.from('trips').select('*').in('id', tripIds);
 
@@ -122,7 +112,6 @@ export default function TripenziApp() {
 
   useEffect(() => { if (currentUser) loadTrips(); }, [currentUser, loadTrips]);
 
-  // --- LOGIKA FILTROVÁNÍ A ŘAZENÍ ---
   const filteredAndSortedTrips = useMemo(() => {
       let result = [...trips];
       const now = new Date();
@@ -133,31 +122,25 @@ export default function TripenziApp() {
               const end = trip.end_date ? new Date(trip.end_date) : new Date(start);
               end.setHours(23, 59, 59);
               start.setHours(0, 0, 0);
-
               if (filter === 'future') return start > now;
               if (filter === 'active') return now >= start && now <= end;
               if (filter === 'past') return now > end;
               return true;
           });
       }
-
       result.sort((a, b) => {
-          if (sortBy === 'alphabet') {
-              return a.name.localeCompare(b.name);
-          } else {
+          if (sortBy === 'alphabet') return a.name.localeCompare(b.name);
+          else {
               const dateA = new Date(a.start_date || 0).getTime();
               const dateB = new Date(b.start_date || 0).getTime();
               return dateB - dateA;
           }
       });
-
       return result;
   }, [trips, filter, sortBy]);
 
-
   const loginUser = (user: User) => { setCurrentUser(user); localStorage.setItem("tripenzi_session", JSON.stringify(user)); setEditUserName(user.name); setEditUserAvatar(user.avatar || "👤"); };
   const handleLogout = () => { setCurrentUser(null); setTrips([]); localStorage.removeItem("tripenzi_session"); setAuthMode("login"); };
-
   const handleRegister = async (e: React.FormEvent) => { e.preventDefault(); if (!authInputName.trim()) return; const randomId = `#${Math.floor(1000 + Math.random() * 9000)}`; const { data } = await supabase.from('users').insert([{ custom_id: randomId, name: authInputName, avatar: "👤" }]).select().single(); if (data) loginUser(data); else setAuthError("Chyba registrace."); };
   const handleLogin = async (e: React.FormEvent) => { e.preventDefault(); const searchID = authInputID.startsWith('#') ? authInputID : `#${authInputID}`; const { data } = await supabase.from('users').select('*').eq('custom_id', searchID).single(); if (data) loginUser(data); else setAuthError("Uživatel nenalezen."); };
   const handleUpdateProfile = async () => { if(!currentUser) return; const { error } = await supabase.from('users').update({ name: editUserName, avatar: editUserAvatar }).eq('id', currentUser.id); if(!error) { const updatedUser = { ...currentUser, name: editUserName, avatar: editUserAvatar }; loginUser(updatedUser); setIsProfileOpen(false); }};
@@ -182,23 +165,37 @@ export default function TripenziApp() {
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-indigo-600"></div></div>;
 
+  // --- SJEDNOCENÉ STYLY KONTEJNERŮ ---
   const inputStyle = "w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 font-medium text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all placeholder-slate-400";
   const btnPrimary = "w-full py-4 rounded-2xl font-bold text-lg shadow-xl shadow-slate-200 bg-slate-900 text-white hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2";
   const btnAction = "w-full py-3 rounded-xl font-bold bg-indigo-600 text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-transform flex items-center justify-center";
-  const cardStyle = "block bg-white rounded-[2rem] p-4 shadow-sm border border-slate-100 relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-xl group mb-4";
+  
+  // ZDE: Větší radius a jemnější stíny pro karty
+  const cardStyle = "block bg-white rounded-[2rem] p-5 shadow-sm border border-slate-100 relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-xl group mb-4 active:scale-[0.98]";
+  
   const tabBtn = "flex-1 py-3 text-sm font-bold rounded-xl transition-all";
   const tabBtnActive = "bg-white shadow-sm text-slate-900";
   const tabBtnInactive = "text-slate-400 hover:text-slate-600";
   
-  // --- NOVÉ STYLY PRO FILTRY (Hezčí design) ---
-  const filterBtnBase = "px-4 py-2 rounded-2xl text-xs font-bold transition-all border flex-shrink-0";
-  const filterBtnActive = "bg-slate-900 text-white border-slate-900 shadow-lg shadow-slate-200 transform scale-105";
+  const filterBtnBase = "px-4 py-2.5 rounded-full text-sm font-bold transition-all border flex-shrink-0 active:scale-95";
+  const filterBtnActive = "bg-slate-900 text-white border-slate-900 shadow-md";
   const filterBtnInactive = "bg-white text-slate-500 border-slate-200 hover:bg-slate-50 shadow-sm";
+
+  // --- MODAL WRAPPER (Sjednocený styl pro pop-up okna) ---
+  const ModalWrapper = ({ children, onClose }: { children: React.ReactNode, onClose: () => void }) => (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
+        {/* ZDE: rounded-[2.5rem] pro moderní vzhled */}
+        <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl relative z-10 animate-in fade-in zoom-in duration-200 border border-white/50">
+            {children}
+        </div>
+    </div>
+  );
 
   if (!currentUser) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-slate-50 font-sans">
-        <div className="w-full max-w-sm bg-white p-8 rounded-[2rem] shadow-2xl shadow-indigo-100 border border-white">
+        <div className="w-full max-w-sm bg-white p-8 rounded-[2.5rem] shadow-2xl shadow-indigo-100 border border-white">
           <div className="flex justify-center mb-6"><Logo size="large" /></div>
           <div className="flex bg-slate-100 p-1.5 rounded-2xl mb-8">
             <button onClick={() => setAuthMode('login')} className={`${tabBtn} ${authMode === 'login' ? tabBtnActive : tabBtnInactive}`}>Přihlásit</button>
@@ -212,39 +209,36 @@ export default function TripenziApp() {
   }
 
   return (
-    <div className="min-h-screen pb-32 font-sans relative bg-slate-50/50">
-      <header className="pt-14 pb-6 px-6 bg-white/80 backdrop-blur-md border-b border-slate-100 sticky top-0 z-30">
-        <div className="flex justify-between items-center">
+    <div className="min-h-screen pb-32 font-sans relative bg-slate-50">
+      
+      <header className="bg-white/90 backdrop-blur-xl border-b border-slate-200 sticky top-0 z-30 transition-all shadow-sm">
+        <div className="pt-12 pb-2 px-6 flex justify-between items-center">
           <div><Logo size="normal" /><p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">Vítej zpět, {currentUser.name}</p></div>
           <div className="flex items-center gap-3">
              <div className="bg-slate-100 px-3 py-1.5 rounded-xl text-xs font-mono font-bold text-slate-700 border border-slate-200 shadow-sm">{currentUser.custom_id}</div>
              <button onClick={() => setIsProfileOpen(true)} className="w-11 h-11 rounded-full bg-slate-100 border border-slate-200 shadow-sm flex items-center justify-center text-2xl hover:bg-slate-200 transition-transform active:scale-95">{currentUser.avatar || "👤"}</button>
           </div>
         </div>
-      </header>
-      
-      <div className="px-6 space-y-6 mt-6">
-        {/* --- DESIGN FILTRŮ A ŘAZENÍ --- */}
-        <div className="flex items-center justify-between gap-4">
-            {/* Scrollable Filtry */}
-            <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar flex-1 mask-linear-fade">
+
+        <div className="px-6 pb-4 pt-2 flex items-center justify-between gap-3">
+            <div className="flex gap-2 overflow-x-auto pb-2 pt-1 no-scrollbar flex-1 mask-linear-fade" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                 <button onClick={() => setFilter('all')} className={`${filterBtnBase} ${filter === 'all' ? filterBtnActive : filterBtnInactive}`}>Vše</button>
                 <button onClick={() => setFilter('future')} className={`${filterBtnBase} ${filter === 'future' ? filterBtnActive : filterBtnInactive}`}>Budoucí</button>
                 <button onClick={() => setFilter('active')} className={`${filterBtnBase} ${filter === 'active' ? filterBtnActive : filterBtnInactive}`}>Probíhající</button>
                 <button onClick={() => setFilter('past')} className={`${filterBtnBase} ${filter === 'past' ? filterBtnActive : filterBtnInactive}`}>Proběhlé</button>
             </div>
             
-            {/* Ikonka pro Řazení */}
             <button 
                 onClick={() => setSortBy(prev => prev === 'date' ? 'alphabet' : 'date')} 
-                className="w-10 h-10 flex items-center justify-center bg-white rounded-2xl shadow-sm border border-slate-200 text-slate-500 hover:text-indigo-600 transition-colors flex-shrink-0"
+                className="w-11 h-11 flex items-center justify-center bg-white rounded-full shadow-sm border border-slate-200 text-slate-500 hover:text-indigo-600 transition-colors flex-shrink-0 active:scale-90"
                 title={`Řadit: ${sortBy === 'date' ? 'Podle data' : 'Abecedně'}`}
             >
                 {sortBy === 'date' ? <SortIcon /> : <span className="text-xs font-black">A-Z</span>}
             </button>
         </div>
-
-        {/* VÝPIS TRIPŮ */}
+      </header>
+      
+      <div className="px-6 space-y-6 mt-6">
         {filteredAndSortedTrips.length === 0 && (
             <div className="text-center text-slate-400 py-20 flex flex-col items-center animate-in fade-in">
                 <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mb-4 text-slate-300"><MapPinIcon /></div>
@@ -261,10 +255,9 @@ export default function TripenziApp() {
           
           return (
           <Link href={`/trip/${trip.share_code}`} key={trip.id} className={cardStyle}>
-              <div className={`h-40 rounded-[1.5rem] mb-4 relative overflow-hidden ${!trip.cover_image ? `bg-gradient-to-br ${trip.color}` : ''}`} style={trip.cover_image ? { backgroundImage: `url(${trip.cover_image})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}>
+              <div className={`h-40 rounded-[1.5rem] mb-5 relative overflow-hidden ${!trip.cover_image ? `bg-gradient-to-br ${trip.color}` : ''}`} style={trip.cover_image ? { backgroundImage: `url(${trip.cover_image})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}>
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
                   
-                  {/* ŽLUTÁ NÁLEPKA */}
                   {status && (
                     <div className={`absolute top-3 right-3 px-2 py-1 rounded-lg text-[10px] font-black uppercase shadow-sm border transform rotate-2 ${status.style}`}>
                         {status.text}
@@ -297,24 +290,37 @@ export default function TripenziApp() {
 
       <div className="fixed bottom-8 right-6 flex flex-col gap-4 z-40"><button onClick={() => setIsJoinModalOpen(true)} className="w-14 h-14 bg-white text-indigo-600 border border-indigo-100 rounded-full shadow-xl shadow-indigo-100 flex items-center justify-center transition-transform active:scale-90 hover:scale-105"><LinkIcon /></button><button onClick={() => setIsModalOpen(true)} className="w-16 h-16 bg-slate-900 text-white rounded-full shadow-2xl shadow-slate-400 flex items-center justify-center transition-transform active:scale-90 hover:scale-105"><PlusIcon /></button></div>
 
-      {isModalOpen && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div><div className="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl relative z-10 animate-in fade-in zoom-in duration-200"><h2 className="text-xl font-bold text-slate-900 mb-6 text-center">Nový Trip</h2><form onSubmit={handleAddTrip} className="space-y-4"><div><label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider pl-1">Název cesty</label><input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Např. Paříž" className={inputStyle} autoFocus /></div><div className="pt-2 flex gap-3"><button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-2.5 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition text-sm">Zrušit</button><button type="submit" className={btnAction}>Vytvořit</button></div></form></div></div>)}
+      {isModalOpen && (
+        <ModalWrapper onClose={() => setIsModalOpen(false)}>
+            <h2 className="text-xl font-bold text-slate-900 mb-6 text-center">Nový Trip</h2>
+            <form onSubmit={handleAddTrip} className="space-y-4">
+                <div><label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider pl-1">Název cesty</label><input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Např. Paříž" className={inputStyle} autoFocus /></div>
+                <div className="pt-2 flex gap-3"><button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-2.5 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition text-sm">Zrušit</button><button type="submit" className={btnAction}>Vytvořit</button></div>
+            </form>
+        </ModalWrapper>
+      )}
       
-      {isJoinModalOpen && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4"><div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsJoinModalOpen(false)}></div><div className="bg-white w-full max-w-sm rounded-[2rem] p-8 shadow-2xl relative z-10 animate-in fade-in zoom-in duration-200"><h2 className="text-2xl font-bold text-slate-900 mb-6 text-center">Připojit se</h2><form onSubmit={handleJoinTrip} className="space-y-4"><div><label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Kód sdílení</label><input type="text" value={joinCode} onChange={(e) => setJoinCode(e.target.value)} placeholder="ABC-123" className={`${inputStyle} text-center text-2xl tracking-widest uppercase font-mono`} autoFocus /></div><button type="submit" className={btnPrimary}>Hledat trip</button></form></div></div>)}
+      {isJoinModalOpen && (
+        <ModalWrapper onClose={() => setIsJoinModalOpen(false)}>
+            <h2 className="text-2xl font-bold text-slate-900 mb-6 text-center">Připojit se</h2>
+            <form onSubmit={handleJoinTrip} className="space-y-4">
+                <div><label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Kód sdílení</label><input type="text" value={joinCode} onChange={(e) => setJoinCode(e.target.value)} placeholder="ABC-123" className={`${inputStyle} text-center text-2xl tracking-widest uppercase font-mono`} autoFocus /></div>
+                <button type="submit" className={btnPrimary}>Hledat trip</button>
+            </form>
+        </ModalWrapper>
+      )}
 
       {isProfileOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsProfileOpen(false)}></div>
-            <div className="bg-white w-full max-w-sm rounded-[2rem] p-8 shadow-2xl relative z-10 animate-in fade-in zoom-in duration-200">
-                <h2 className="text-2xl font-bold text-slate-900 mb-6 text-center">Můj Profil</h2>
-                <div className="space-y-6">
-                    <div className="flex justify-center"><div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center text-6xl shadow-inner border-4 border-white">{editUserAvatar}</div></div>
-                    <div className="flex justify-center gap-2 overflow-x-auto pb-2 no-scrollbar">{AVATARS.map(av => (<button key={av} onClick={() => setEditUserAvatar(av)} className={`text-2xl p-2 rounded-xl transition ${editUserAvatar === av ? 'bg-indigo-100 border-2 border-indigo-500' : 'hover:bg-slate-50'}`}>{av}</button>))}</div>
-                    <div><label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Jméno</label><input type="text" value={editUserName} onChange={e => setEditUserName(e.target.value)} className={inputStyle} /></div>
-                    <button onClick={handleUpdateProfile} className={btnPrimary}>Uložit změny</button>
-                    <button onClick={handleLogout} className="w-full py-3 text-rose-500 font-bold hover:bg-rose-50 rounded-xl transition flex items-center justify-center gap-2"><LogOutIcon /> Odhlásit se</button>
-                </div>
+        <ModalWrapper onClose={() => setIsProfileOpen(false)}>
+            <h2 className="text-2xl font-bold text-slate-900 mb-6 text-center">Můj Profil</h2>
+            <div className="space-y-6">
+                <div className="flex justify-center"><div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center text-6xl shadow-inner border-4 border-white">{editUserAvatar}</div></div>
+                <div className="flex justify-center gap-2 overflow-x-auto pb-2 no-scrollbar">{AVATARS.map(av => (<button key={av} onClick={() => setEditUserAvatar(av)} className={`text-2xl p-2 rounded-xl transition ${editUserAvatar === av ? 'bg-indigo-100 border-2 border-indigo-500' : 'hover:bg-slate-50'}`}>{av}</button>))}</div>
+                <div><label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Jméno</label><input type="text" value={editUserName} onChange={e => setEditUserName(e.target.value)} className={inputStyle} /></div>
+                <button onClick={handleUpdateProfile} className={btnPrimary}>Uložit změny</button>
+                <button onClick={handleLogout} className="w-full py-3 text-rose-500 font-bold hover:bg-rose-50 rounded-xl transition flex items-center justify-center gap-2"><LogOutIcon /> Odhlásit se</button>
             </div>
-        </div>
+        </ModalWrapper>
       )}
     </div>
   );

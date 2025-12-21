@@ -68,27 +68,22 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
       return textDate || "Bez data";
   };
 
-  // --- NOVÁ FUNKCE: Odpočet (Hype Mode) ---
   const getCountdownText = () => {
       if (!trip?.startDate) return null;
-      
       const now = new Date();
       const start = new Date(trip.startDate);
       const end = trip.endDate ? new Date(trip.endDate) : new Date(start);
-      
       end.setHours(23, 59, 59);
       start.setHours(0, 0, 0);
 
       const diffStart = start.getTime() - now.getTime();
       
-      // 1. Future
       if (diffStart > 0) {
           const days = Math.floor(diffStart / (1000 * 60 * 60 * 24));
           const hours = Math.floor((diffStart % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
           if (days > 0) return `⏳ Už jen ${days} dní a ${hours} hod!`;
           return `⏳ Už jen ${hours} hodin do startu!`;
       }
-      // 2. Ongoing
       if (now <= end) {
          const totalDuration = end.getTime() - start.getTime();
          const totalDays = Math.ceil(totalDuration / (1000 * 60 * 60 * 24)) || 1;
@@ -96,7 +91,6 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
          const currentDay = Math.floor(elapsed / (1000 * 60 * 60 * 24)) + 1;
          return `🚀 Den ${currentDay} z ${totalDays}`;
       }
-      // 3. Past
       return "🏁 Trip skončil";
   };
 
@@ -151,13 +145,10 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
     } catch (err) { console.error(err); } finally { setLoading(false); }
   }, [shareCodeParam, router]);
 
-  // Načtení dat při startu
   useEffect(() => { fetchTripData(); }, [fetchTripData]);
 
-  // --- REALTIME AKTUALIZACE ---
   useEffect(() => {
     if (!trip?.id) return;
-
     const channel = supabase
       .channel(`trip_updates_${trip.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses', filter: `trip_id=eq.${trip.id}` }, () => fetchTripData())
@@ -166,11 +157,9 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
       .on('postgres_changes', { event: '*', schema: 'public', table: 'trip_details', filter: `trip_id=eq.${trip.id}` }, () => fetchTripData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'trips', filter: `id=eq.${trip.id}` }, () => fetchTripData())
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, [trip?.id, fetchTripData]);
 
-  // --- CRUD FUNKCE ---
   const addParticipant = async (name: string) => { if (!trip) return; await supabase.from('participants').insert([{ trip_id: trip.id, name }]); fetchTripData(); };
   const deleteParticipant = async (id: number) => { await supabase.from('participants').delete().eq('id', id); fetchTripData(); };
   
@@ -210,43 +199,83 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
   const headerStyle = trip.coverImage ? { backgroundImage: `url(${trip.coverImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {};
   const headerClass = trip.coverImage ? "relative text-white" : `bg-gradient-to-r ${trip.color} text-white relative`;
 
+  // --- ZMĚNA: Hranatější 'Glass' kontejnery (rounded-xl) ---
+  const glassContainer = "bg-black/20 backdrop-blur-md px-4 py-2 rounded-xl text-xs font-bold border border-white/10 text-white flex items-center gap-2 shadow-sm";
+
   return (
-    <div className="min-h-screen bg-gray-50 pb-24 font-sans max-w-md mx-auto relative">
-      <div className={`${headerClass} p-6 pb-16 transition-all duration-500`} style={headerStyle}>
+    <div className="min-h-screen bg-slate-50 pb-24 font-sans max-w-md mx-auto relative">
+      {/* --- BANNER --- */}
+      <div className={`${headerClass} p-6 pb-20 transition-all duration-500`} style={headerStyle}>
         {trip.coverImage && <div className="absolute inset-0 bg-black/40"></div>}
+        
         <div className="relative z-10">
-            <div className="mb-6 flex justify-between items-center">
-                <Link href="/" className="p-2 bg-white/20 rounded-full hover:bg-white/30 transition backdrop-blur-md inline-flex"><ArrowLeft /></Link>
-                {/* ODPOČET (HYPE MODE) */}
+            {/* Horní řádek: Zpět + Odpočet */}
+            <div className="mb-6 flex justify-between items-start">
+                {/* ZMĚNA: rounded-xl pro tlačítko zpět */}
+                <Link href="/" className="p-2.5 bg-black/20 border border-white/10 rounded-xl hover:bg-black/30 transition backdrop-blur-md flex items-center justify-center text-white"><ArrowLeft /></Link>
+                
                 {trip.startDate && (
-                    <div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-[10px] font-bold text-white shadow-sm border border-white/20">
+                    // ZMĚNA: rounded-xl pro odpočet
+                    <div className="px-3 py-1.5 bg-yellow-400 text-yellow-900 rounded-xl text-[10px] font-black uppercase tracking-wide shadow-lg border border-yellow-200 transform rotate-1">
                         {getCountdownText()}
                     </div>
                 )}
             </div>
             
+            {/* Název a Info */}
             <div>
-                <h1 className="text-3xl font-bold drop-shadow-md">{trip.name}</h1>
+                <h1 className="text-4xl font-bold drop-shadow-lg mb-4 leading-tight">{trip.name}</h1>
                 
-                <div className="flex items-center gap-2 mt-2">
-                    <div className="bg-black/20 backdrop-blur-md px-3 py-1 rounded-lg text-[10px] font-bold border border-white/10 text-white flex items-center gap-1.5 width-fit">
+                <div className="flex flex-wrap items-center gap-2">
+                    {/* Datum (používá glassContainer s rounded-xl) */}
+                    <div className={glassContainer}>
                         <ClockIcon /> {trip.dateFormatted}
                     </div>
-                    {/* WIDGET POČASÍ */}
+                    {/* Počasí Widget (upraven v WeatherWidget.tsx) */}
                     <WeatherWidget city={trip.weatherLocation || trip.name} />
                 </div>
 
-                <div className="mt-4 flex items-center gap-4 text-sm font-medium bg-black/30 p-2 rounded-lg inline-flex backdrop-blur-md border border-white/10"><span>💰 Útrata: {trip.spent} {trip.baseCurrency}</span></div>
+                <div className="mt-2 inline-flex">
+                    <div className={glassContainer}>
+                        <span>💰 Útrata: {trip.spent} {trip.baseCurrency}</span>
+                    </div>
+                </div>
             </div>
         </div>
       </div>
 
-      <div className="-mt-8 bg-white rounded-t-3xl min-h-screen relative z-10 flex flex-col">
-        <div className="flex border-b border-gray-100">
-          <button onClick={() => setActiveTab('plan')} className={`flex-1 py-4 text-xs font-bold flex flex-col items-center gap-1 ${activeTab === 'plan' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400'}`}><ListIcon /> PLÁN</button>
-          <button onClick={() => setActiveTab('budget')} className={`flex-1 py-4 text-xs font-bold flex flex-col items-center gap-1 ${activeTab === 'budget' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400'}`}><WalletIcon /> ROZPOČET</button>
-          <button onClick={() => setActiveTab('info')} className={`flex-1 py-4 text-xs font-bold flex flex-col items-center gap-1 ${activeTab === 'info' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400'}`}><InfoIcon /> INFO</button>
-          <button onClick={() => setActiveTab('settings')} className={`flex-1 py-4 text-xs font-bold flex flex-col items-center gap-1 ${activeTab === 'settings' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400'}`}><SettingsIcon /> NASTAVENÍ</button>
+      {/* --- HLAVNÍ OBSAH (Méně kulatý vršek: rounded-t-3xl) --- */}
+      <div className="-mt-12 bg-white rounded-t-3xl min-h-screen relative z-10 flex flex-col shadow-2xl shadow-black/5">
+        
+        {/* NAVIGACE (ZPĚT K MODRÉMU PODTRŽENÍ) */}
+        <div className="flex border-b border-gray-100 px-2 pt-2">
+          <button 
+            onClick={() => setActiveTab('plan')} 
+            className={`flex-1 py-4 text-xs font-bold flex flex-col items-center gap-1.5 transition-all ${activeTab === 'plan' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
+          >
+            <ListIcon /> PLÁN
+          </button>
+          
+          <button 
+            onClick={() => setActiveTab('budget')} 
+            className={`flex-1 py-4 text-xs font-bold flex flex-col items-center gap-1.5 transition-all ${activeTab === 'budget' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
+          >
+            <WalletIcon /> ROZPOČET
+          </button>
+          
+          <button 
+            onClick={() => setActiveTab('info')} 
+            className={`flex-1 py-4 text-xs font-bold flex flex-col items-center gap-1.5 transition-all ${activeTab === 'info' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
+          >
+            <InfoIcon /> INFO
+          </button>
+          
+          <button 
+            onClick={() => setActiveTab('settings')} 
+            className={`flex-1 py-4 text-xs font-bold flex flex-col items-center gap-1.5 transition-all ${activeTab === 'settings' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
+          >
+            <SettingsIcon /> NASTAVENÍ
+          </button>
         </div>
 
         <div className="p-6 flex-1">
