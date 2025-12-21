@@ -1,16 +1,16 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, use, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, use } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import BudgetView from '@/components/BudgetView';
 import SettingsView from '@/components/SettingsView';
 import PlanView from '@/components/PlanView';
 import InfoView from '@/components/InfoView';
-import WeatherWidget from '@/components/WeatherWidget'; // UJISTI SE, ŽE JE TO IMPORTOLVANÉ
+import WeatherWidget from '@/components/WeatherWidget';
 import { supabase } from '@/lib/supabaseClient';
 
-// --- HLAVNÍ IKONY (Zůstávají stejné) ---
+// --- HLAVNÍ IKONY ---
 const ArrowLeft = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>;
 const ClockIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
 const ListIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>;
@@ -38,10 +38,8 @@ type Trip = {
   totalBudget?: number;
   shareCode?: string;
   mapLink?: string;
-  weatherLocation?: string; // TOTO JE DŮLEŽITÉ
+  weatherLocation?: string;
 };
-
-const DOT_COLORS = ["bg-blue-500", "bg-red-500", "bg-green-500", "bg-yellow-500", "bg-purple-500", "bg-slate-500"];
 
 export default function TripDetail({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
@@ -52,15 +50,6 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
   const [activeTab, setActiveTab] = useState<'plan' | 'budget' | 'info' | 'settings'>('plan');
   const [trip, setTrip] = useState<Trip | null>(null);
   const [loading, setLoading] = useState(true);
-
-  // Stavy pro Plán a Info
-  const [newEventTitle, setNewEventTitle] = useState("");
-  const [newEventTime, setNewEventTime] = useState("");
-  const [newEventDate, setNewEventDate] = useState("");
-  const [newEventColor, setNewEventColor] = useState("bg-blue-500");
-  const [notes, setNotes] = useState("");
-  const [photoLink, setPhotoLink] = useState("");
-  const [newParticipant, setNewParticipant] = useState("");
 
   useEffect(() => {
       const tabParam = searchParams.get('tab');
@@ -77,6 +66,38 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
           return new Date(start).toLocaleDateString('cs-CZ', {day: 'numeric', month: 'numeric', year: 'numeric'});
       }
       return textDate || "Bez data";
+  };
+
+  // --- NOVÁ FUNKCE: Odpočet (Hype Mode) ---
+  const getCountdownText = () => {
+      if (!trip?.startDate) return null;
+      
+      const now = new Date();
+      const start = new Date(trip.startDate);
+      const end = trip.endDate ? new Date(trip.endDate) : new Date(start);
+      
+      end.setHours(23, 59, 59);
+      start.setHours(0, 0, 0);
+
+      const diffStart = start.getTime() - now.getTime();
+      
+      // 1. Future
+      if (diffStart > 0) {
+          const days = Math.floor(diffStart / (1000 * 60 * 60 * 24));
+          const hours = Math.floor((diffStart % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+          if (days > 0) return `⏳ Už jen ${days} dní a ${hours} hod!`;
+          return `⏳ Už jen ${hours} hodin do startu!`;
+      }
+      // 2. Ongoing
+      if (now <= end) {
+         const totalDuration = end.getTime() - start.getTime();
+         const totalDays = Math.ceil(totalDuration / (1000 * 60 * 60 * 24)) || 1;
+         const elapsed = now.getTime() - start.getTime();
+         const currentDay = Math.floor(elapsed / (1000 * 60 * 60 * 24)) + 1;
+         return `🚀 Den ${currentDay} z ${totalDays}`;
+      }
+      // 3. Past
+      return "🏁 Trip skončil";
   };
 
   const fetchTripData = useCallback(async () => {
@@ -116,7 +137,7 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
             totalBudget: tripData.total_budget,
             shareCode: tripData.share_code,
             mapLink: tripData.map_link,
-            weatherLocation: tripData.weather_location, // ZDE SE NAČÍTÁ LOKALITA
+            weatherLocation: tripData.weather_location, 
             budget: 0,
             spent: Math.round(totalSpent),
             coverImage: tripData.cover_image,
@@ -127,55 +148,27 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
             expenses: loadedExpenses
         });
 
-        setNotes(detailsData?.notes || "");
-        setPhotoLink(detailsData?.photo_link || "");
-        const today = new Date().toISOString().split('T')[0];
-        setNewEventDate(tripData.start_date || today);
-
     } catch (err) { console.error(err); } finally { setLoading(false); }
   }, [shareCodeParam, router]);
 
+  // Načtení dat při startu
   useEffect(() => { fetchTripData(); }, [fetchTripData]);
 
   // --- REALTIME AKTUALIZACE ---
   useEffect(() => {
-    if (!trip?.id) return; // Čekáme, až se načte ID tripu
-
-    console.log("🟢 Připojuji se k Realtime odběru pro trip:", trip.id);
+    if (!trip?.id) return;
 
     const channel = supabase
       .channel(`trip_updates_${trip.id}`)
-      // 1. Změny ve VÝDAJÍCH
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses', filter: `trip_id=eq.${trip.id}` }, () => {
-         console.log("💰 Změna ve výdajích -> aktualizuji...");
-         fetchTripData();
-      })
-      // 2. Změny v PLÁNU (events)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'events', filter: `trip_id=eq.${trip.id}` }, () => {
-         console.log("📅 Změna v plánu -> aktualizuji...");
-         fetchTripData();
-      })
-      // 3. Změny v ÚČASTNÍCÍCH
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'participants', filter: `trip_id=eq.${trip.id}` }, () => {
-         fetchTripData();
-      })
-      // 4. Změny v POZNÁMKÁCH
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'trip_details', filter: `trip_id=eq.${trip.id}` }, () => {
-         fetchTripData();
-      })
-      // 5. Změny v NASTAVENÍ TRIPU (např. jméno, barva)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips', filter: `id=eq.${trip.id}` }, () => {
-         fetchTripData();
-      })
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') console.log("✅ Připojeno k Realtime!");
-      });
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses', filter: `trip_id=eq.${trip.id}` }, () => fetchTripData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'events', filter: `trip_id=eq.${trip.id}` }, () => fetchTripData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'participants', filter: `trip_id=eq.${trip.id}` }, () => fetchTripData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trip_details', filter: `trip_id=eq.${trip.id}` }, () => fetchTripData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips', filter: `id=eq.${trip.id}` }, () => fetchTripData())
+      .subscribe();
 
-    // Úklid při odchodu ze stránky
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [trip?.id, fetchTripData]); // Důležité: závislost jen na ID, aby se to nepřipojovalo pořád dokola
+    return () => { supabase.removeChannel(channel); };
+  }, [trip?.id, fetchTripData]);
 
   // --- CRUD FUNKCE ---
   const addParticipant = async (name: string) => { if (!trip) return; await supabase.from('participants').insert([{ trip_id: trip.id, name }]); fetchTripData(); };
@@ -224,8 +217,14 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
         <div className="relative z-10">
             <div className="mb-6 flex justify-between items-center">
                 <Link href="/" className="p-2 bg-white/20 rounded-full hover:bg-white/30 transition backdrop-blur-md inline-flex"><ArrowLeft /></Link>
-                <div className="bg-green-500/80 px-2 py-1 rounded text-[10px] font-bold text-white flex items-center gap-1">Online ☁️</div>
+                {/* ODPOČET (HYPE MODE) */}
+                {trip.startDate && (
+                    <div className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-[10px] font-bold text-white shadow-sm border border-white/20">
+                        {getCountdownText()}
+                    </div>
+                )}
             </div>
+            
             <div>
                 <h1 className="text-3xl font-bold drop-shadow-md">{trip.name}</h1>
                 
@@ -233,6 +232,7 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
                     <div className="bg-black/20 backdrop-blur-md px-3 py-1 rounded-lg text-[10px] font-bold border border-white/10 text-white flex items-center gap-1.5 width-fit">
                         <ClockIcon /> {trip.dateFormatted}
                     </div>
+                    {/* WIDGET POČASÍ */}
                     <WeatherWidget city={trip.weatherLocation || trip.name} />
                 </div>
 
