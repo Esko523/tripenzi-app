@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import Logo from '@/components/Logo';
-import LoginView from '@/components/LoginView'; // Import nové komponenty
+import LoginView from '@/components/LoginView';
 
 // --- IKONY ---
 const PlusIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>;
@@ -37,7 +37,6 @@ export default function TripenziApp() {
   const [editUserName, setEditUserName] = useState("");
   const [editUserAvatar, setEditUserAvatar] = useState("👤");
 
-  // Format data
   const formatDateRange = (start?: string, end?: string, textDate?: string) => {
       if (start) {
           const s = new Date(start).toLocaleDateString('cs-CZ', {day: 'numeric', month: 'numeric'});
@@ -50,7 +49,6 @@ export default function TripenziApp() {
       return textDate || "Bez data";
   };
 
-  // Odpočet
   const getCountdownStatus = (startDate?: string, endDate?: string) => {
       if (!startDate) return null;
       const now = new Date();
@@ -78,23 +76,24 @@ export default function TripenziApp() {
       return { text: "🏁 Skončilo", style: baseStyle };
   };
 
+  // --- FUNKCE NAČÍTÁNÍ DAT (S OFFLINE CACHE) ---
   const loadTrips = useCallback(async () => {
     if (!currentUser) return;
 
-    // 1. ZKUSÍME NAČÍST Z LOKÁLNÍ PAMĚTI (OFFLINE DATA)
+    // 1. NEJPRVE NAČTEME Z LOKÁLNÍ PAMĚTI (OFFLINE DATA)
     const cachedTrips = localStorage.getItem(`trips_cache_${currentUser.custom_id}`);
     if (cachedTrips) {
-        console.log("Načítám tripy z cache...");
+        console.log("⚡ Načítám tripy z cache (offline podpora)");
         setTrips(JSON.parse(cachedTrips));
-        setLoading(false); // Zobrazíme obsah hned
+        setLoading(false); // Zobrazíme obsah hned, nečekáme na síť
     }
 
-    // 2. ZKUSÍME STÁHNOUT ČERSTVÁ DATA (ONLINE)
+    // 2. PAK ZKUSÍME STÁHNOUT ČERSTVÁ DATA ZE SERVERU
     try {
         const { data: memberData } = await supabase.from('trip_members').select('trip_id').eq('user_id', currentUser.custom_id);
         if (!memberData || memberData.length === 0) { 
             setTrips([]); 
-            localStorage.removeItem(`trips_cache_${currentUser.custom_id}`); // Smažeme cache, pokud nic nemáme
+            localStorage.removeItem(`trips_cache_${currentUser.custom_id}`);
             return; 
         }
         
@@ -111,12 +110,12 @@ export default function TripenziApp() {
                 return { ...trip, spent: Math.round(spent) };
             }));
             
-            // 3. ULOŽÍME ČERSTVÁ DATA DO PAMĚTI PRO PŘÍŠTĚ
+            // 3. ULOŽÍME ČERSTVÁ DATA DO CACHE PRO PŘÍŠTĚ
             setTrips(tripsWithSpent);
             localStorage.setItem(`trips_cache_${currentUser.custom_id}`, JSON.stringify(tripsWithSpent));
         }
     } catch (e) {
-        console.log("Jsem offline, používám data z cache.");
+        console.log("⚠️ Jsem offline nebo chyba sítě, zůstávají zobrazena data z cache.");
     } finally {
         setLoading(false);
     }
@@ -219,18 +218,14 @@ export default function TripenziApp() {
     </div>
   );
 
-  // --- ZOBRAZENÍ LOGINU POKUD NENÍ UŽIVATEL ---
   if (!currentUser) {
     return <LoginView onLogin={loginUser} />;
   }
 
-  // --- DOMOVSKÁ OBRAZOVKA (LOGGED IN) ---
   return (
     <div className="min-h-screen pb-32 font-sans relative bg-slate-50">
       
-      {/* HEADER (Menší a bez sticky) */}
       <header className="bg-white border-b border-slate-100">
-        {/* Řádek 1: Logo a Profil */}
         <div className="pt-6 pb-2 px-6 flex justify-between items-center">
           <div>
               <Logo size="normal" variant="full" />
@@ -242,7 +237,6 @@ export default function TripenziApp() {
           </div>
         </div>
 
-        {/* Řádek 2: Filtry a Řazení */}
         <div className="px-6 pb-4 pt-2 flex items-center justify-between gap-3">
             <div className="flex gap-2 overflow-x-auto pb-2 pt-1 no-scrollbar flex-1 mask-linear-fade" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                 <button onClick={() => setFilter('all')} className={`${filterBtnBase} ${filter === 'all' ? filterBtnActive : filterBtnInactive}`}>Vše</button>
@@ -311,7 +305,6 @@ export default function TripenziApp() {
         )})}
       </div>
 
-      {/* TLAČÍTKA AKCÍ (Zarovnaná na střed pod sebou - items-center) */}
       <div className="fixed bottom-8 right-6 flex flex-col gap-4 items-center z-40">
         <button onClick={() => setIsJoinModalOpen(true)} className="w-14 h-14 bg-white text-indigo-600 border border-indigo-100 rounded-full shadow-xl shadow-indigo-100 flex items-center justify-center transition-transform active:scale-90 hover:scale-105">
             <LinkIcon />
