@@ -4,7 +4,8 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import Logo from '@/components/Logo'; // Import nového loga
+import Logo from '@/components/Logo';
+import LoginView from '@/components/LoginView'; // Import nové komponenty
 
 // --- IKONY ---
 const PlusIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>;
@@ -22,7 +23,6 @@ export default function TripenziApp() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [trips, setTrips] = useState<any[]>([]);
   
-  // STAVY PRO FILTR A ŘAZENÍ
   const [filter, setFilter] = useState<'all' | 'future' | 'active' | 'past'>('all');
   const [sortBy, setSortBy] = useState<'date' | 'alphabet'>('date');
 
@@ -33,14 +33,11 @@ export default function TripenziApp() {
   const [newName, setNewName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [loading, setLoading] = useState(true);
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [authInputName, setAuthInputName] = useState("");
-  const [authInputID, setAuthInputID] = useState("");
-  const [authError, setAuthError] = useState("");
   
   const [editUserName, setEditUserName] = useState("");
   const [editUserAvatar, setEditUserAvatar] = useState("👤");
 
+  // Format data
   const formatDateRange = (start?: string, end?: string, textDate?: string) => {
       if (start) {
           const s = new Date(start).toLocaleDateString('cs-CZ', {day: 'numeric', month: 'numeric'});
@@ -53,29 +50,24 @@ export default function TripenziApp() {
       return textDate || "Bez data";
   };
 
-  // --- ODPOČET ---
+  // Odpočet
   const getCountdownStatus = (startDate?: string, endDate?: string) => {
       if (!startDate) return null;
-      
       const now = new Date();
       const start = new Date(startDate);
       const end = endDate ? new Date(endDate) : new Date(start);
-      
       end.setHours(23, 59, 59);
       start.setHours(0, 0, 0);
 
       const diffStart = start.getTime() - now.getTime();
       const baseStyle = "bg-yellow-400 text-yellow-900 border-yellow-200";
 
-      // 1. Budoucí
       if (diffStart > 0) {
           const days = Math.floor(diffStart / (1000 * 60 * 60 * 24));
           const hours = Math.floor((diffStart % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
           if (days > 0) return { text: `⏳ Za ${days} dní`, style: baseStyle };
           return { text: `⏳ Za ${hours} hod`, style: baseStyle };
       }
-
-      // 2. Probíhající
       if (now <= end) {
          const totalDuration = end.getTime() - start.getTime();
          const totalDays = Math.ceil(totalDuration / (1000 * 60 * 60 * 24)) || 1;
@@ -83,8 +75,6 @@ export default function TripenziApp() {
          const currentDay = Math.floor(elapsed / (1000 * 60 * 60 * 24)) + 1;
          return { text: `🚀 Den ${currentDay}/${totalDays}`, style: baseStyle };
       }
-
-      // 3. Minulost
       return { text: "🏁 Skončilo", style: baseStyle };
   };
 
@@ -122,7 +112,6 @@ export default function TripenziApp() {
 
   useEffect(() => { if (currentUser) loadTrips(); }, [currentUser, loadTrips]);
 
-  // --- LOGIKA FILTROVÁNÍ A ŘAZENÍ ---
   const filteredAndSortedTrips = useMemo(() => {
       let result = [...trips];
       const now = new Date();
@@ -133,7 +122,6 @@ export default function TripenziApp() {
               const end = trip.end_date ? new Date(trip.end_date) : new Date(start);
               end.setHours(23, 59, 59);
               start.setHours(0, 0, 0);
-
               if (filter === 'future') return start > now;
               if (filter === 'active') return now >= start && now <= end;
               if (filter === 'past') return now > end;
@@ -154,12 +142,19 @@ export default function TripenziApp() {
       return result;
   }, [trips, filter, sortBy]);
 
+  const loginUser = (user: User) => { 
+      setCurrentUser(user); 
+      localStorage.setItem("tripenzi_session", JSON.stringify(user)); 
+      setEditUserName(user.name); 
+      setEditUserAvatar(user.avatar || "👤"); 
+  };
+  
+  const handleLogout = () => { 
+      setCurrentUser(null); 
+      setTrips([]); 
+      localStorage.removeItem("tripenzi_session"); 
+  };
 
-  const loginUser = (user: User) => { setCurrentUser(user); localStorage.setItem("tripenzi_session", JSON.stringify(user)); setEditUserName(user.name); setEditUserAvatar(user.avatar || "👤"); };
-  const handleLogout = () => { setCurrentUser(null); setTrips([]); localStorage.removeItem("tripenzi_session"); setAuthMode("login"); };
-
-  const handleRegister = async (e: React.FormEvent) => { e.preventDefault(); if (!authInputName.trim()) return; const randomId = `#${Math.floor(1000 + Math.random() * 9000)}`; const { data } = await supabase.from('users').insert([{ custom_id: randomId, name: authInputName, avatar: "👤" }]).select().single(); if (data) loginUser(data); else setAuthError("Chyba registrace."); };
-  const handleLogin = async (e: React.FormEvent) => { e.preventDefault(); const searchID = authInputID.startsWith('#') ? authInputID : `#${authInputID}`; const { data } = await supabase.from('users').select('*').eq('custom_id', searchID).single(); if (data) loginUser(data); else setAuthError("Uživatel nenalezen."); };
   const handleUpdateProfile = async () => { if(!currentUser) return; const { error } = await supabase.from('users').update({ name: editUserName, avatar: editUserAvatar }).eq('id', currentUser.id); if(!error) { const updatedUser = { ...currentUser, name: editUserName, avatar: editUserAvatar }; loginUser(updatedUser); setIsProfileOpen(false); }};
   const generateShareCode = () => { const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"; let result = ""; for (let i = 0; i < 6; i++) { if (i === 3) result += "-"; result += chars.charAt(Math.floor(Math.random() * chars.length)); } return result; };
 
@@ -188,16 +183,10 @@ export default function TripenziApp() {
   
   const cardStyle = "block bg-white rounded-[2rem] p-5 shadow-sm border border-slate-100 relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-xl group mb-4 active:scale-[0.98]";
   
-  const tabBtn = "flex-1 py-3 text-sm font-bold rounded-xl transition-all";
-  const tabBtnActive = "bg-white shadow-sm text-slate-900";
-  const tabBtnInactive = "text-slate-400 hover:text-slate-600";
-  
-  // --- FILTRY STYLY ---
   const filterBtnBase = "px-4 py-2.5 rounded-full text-sm font-bold transition-all border flex-shrink-0 active:scale-95";
   const filterBtnActive = "bg-slate-900 text-white border-slate-900 shadow-md";
   const filterBtnInactive = "bg-white text-slate-500 border-slate-200 hover:bg-slate-50 shadow-sm";
 
-  // --- MODAL WRAPPER ---
   const ModalWrapper = ({ children, onClose }: { children: React.ReactNode, onClose: () => void }) => (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
@@ -207,35 +196,20 @@ export default function TripenziApp() {
     </div>
   );
 
-  // --- LOGIN SCREEN ---
+  // --- ZOBRAZENÍ LOGINU POKUD NENÍ UŽIVATEL ---
   if (!currentUser) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-slate-50 font-sans">
-        <div className="w-full max-w-sm bg-white p-8 rounded-[2.5rem] shadow-2xl shadow-indigo-100 border border-white">
-          <div className="flex justify-center mb-8">
-            {/* ZMĚNA: Použití varianty badge pro logo */}
-            <Logo size="xl" variant="badge" />
-          </div>
-          <div className="flex bg-slate-100 p-1.5 rounded-2xl mb-8">
-            <button onClick={() => setAuthMode('login')} className={`${tabBtn} ${authMode === 'login' ? tabBtnActive : tabBtnInactive}`}>Přihlásit</button>
-            <button onClick={() => setAuthMode('register')} className={`${tabBtn} ${authMode === 'register' ? tabBtnActive : tabBtnInactive}`}>Registrovat</button>
-          </div>
-          {authMode === 'login' && (<form onSubmit={handleLogin} className="space-y-5"><div><label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-widest pl-1">Tvoje ID</label><input type="text" value={authInputID} onChange={(e) => setAuthInputID(e.target.value)} placeholder="#1234" className={`${inputStyle} text-center font-mono text-2xl tracking-widest uppercase`} autoFocus /></div>{authError && <p className="text-rose-500 text-xs text-center font-bold bg-rose-50 py-2 rounded-lg">{authError}</p>}<button type="submit" className={btnPrimary}>Vstoupit</button></form>)}
-          {authMode === 'register' && (<form onSubmit={handleRegister} className="space-y-5"><div><label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-widest pl-1">Jak ti říkají?</label><input type="text" value={authInputName} onChange={(e) => setAuthInputName(e.target.value)} placeholder="Např. Lukáš" className={inputStyle} autoFocus /></div><button type="submit" className={btnAction}>Získat ID a vstoupit</button></form>)}
-        </div>
-      </div>
-    );
+    return <LoginView onLogin={loginUser} />;
   }
 
-  // --- HOME SCREEN ---
+  // --- DOMOVSKÁ OBRAZOVKA (LOGGED IN) ---
   return (
     <div className="min-h-screen pb-32 font-sans relative bg-slate-50">
       
-      {/* HEADER */}
-      <header className="bg-white/90 backdrop-blur-xl border-b border-slate-200 sticky top-0 z-30 transition-all shadow-sm">
-        <div className="pt-12 pb-2 px-6 flex justify-between items-center">
+      {/* HEADER (Menší a bez sticky) */}
+      <header className="bg-white border-b border-slate-100">
+        {/* Řádek 1: Logo a Profil */}
+        <div className="pt-6 pb-2 px-6 flex justify-between items-center">
           <div>
-              {/* ZMĚNA: Použití varianty full (ikona + text) pro hlavičku */}
               <Logo size="normal" variant="full" />
               <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1 pl-1">Vítej zpět, {currentUser.name}</p>
           </div>
@@ -245,6 +219,7 @@ export default function TripenziApp() {
           </div>
         </div>
 
+        {/* Řádek 2: Filtry a Řazení */}
         <div className="px-6 pb-4 pt-2 flex items-center justify-between gap-3">
             <div className="flex gap-2 overflow-x-auto pb-2 pt-1 no-scrollbar flex-1 mask-linear-fade" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                 <button onClick={() => setFilter('all')} className={`${filterBtnBase} ${filter === 'all' ? filterBtnActive : filterBtnInactive}`}>Vše</button>
@@ -313,7 +288,15 @@ export default function TripenziApp() {
         )})}
       </div>
 
-      <div className="fixed bottom-8 right-6 flex flex-col gap-4 z-40"><button onClick={() => setIsJoinModalOpen(true)} className="w-14 h-14 bg-white text-indigo-600 border border-indigo-100 rounded-full shadow-xl shadow-indigo-100 flex items-center justify-center transition-transform active:scale-90 hover:scale-105"><LinkIcon /></button><button onClick={() => setIsModalOpen(true)} className="w-16 h-16 bg-slate-900 text-white rounded-full shadow-2xl shadow-slate-400 flex items-center justify-center transition-transform active:scale-90 hover:scale-105"><PlusIcon /></button></div>
+      {/* TLAČÍTKA AKCÍ (Zarovnaná na střed pod sebou - items-center) */}
+      <div className="fixed bottom-8 right-6 flex flex-col gap-4 items-center z-40">
+        <button onClick={() => setIsJoinModalOpen(true)} className="w-14 h-14 bg-white text-indigo-600 border border-indigo-100 rounded-full shadow-xl shadow-indigo-100 flex items-center justify-center transition-transform active:scale-90 hover:scale-105">
+            <LinkIcon />
+        </button>
+        <button onClick={() => setIsModalOpen(true)} className="w-16 h-16 bg-slate-900 text-white rounded-full shadow-2xl shadow-slate-400 flex items-center justify-center transition-transform active:scale-90 hover:scale-105">
+            <PlusIcon />
+        </button>
+      </div>
 
       {isModalOpen && (
         <ModalWrapper onClose={() => setIsModalOpen(false)}>
