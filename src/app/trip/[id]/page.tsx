@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, use } from 'react';
+import React, { useState, useEffect, useCallback, use, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import BudgetView from '@/components/BudgetView';
 import SettingsView from '@/components/SettingsView';
-import PlanView from '@/components/PlanView'; // NOVÉ
-import InfoView from '@/components/InfoView'; // NOVÉ
+import PlanView from '@/components/PlanView';
+import InfoView from '@/components/InfoView';
 import { supabase } from '@/lib/supabaseClient';
 
 // --- HLAVNÍ IKONY ---
@@ -17,8 +17,8 @@ const WalletIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" heig
 const InfoIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="16" y2="12"/><line x1="12" x2="12.01" y1="8" y2="8"/></svg>;
 const SettingsIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>;
 
-// Tyto typy jsou nyní i v pod-komponentách, ale zde je potřebujeme pro State
-type Event = { id: number; time: string; title: string; date?: string; color?: string; };
+// ZMĚNA: Přidáno location do typu Event
+type Event = { id: number; time: string; title: string; location?: string; date?: string; color?: string; };
 type Participant = { id: number; name: string; };
 type SplitMethod = 'equal' | 'exact' | 'shares';
 type Expense = { 
@@ -119,7 +119,7 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
 
   useEffect(() => { fetchTripData(); }, [fetchTripData]);
 
-  // --- CRUD FUNKCE PŘEDÁVANÉ DO KOMPONENT ---
+  // --- CRUD FUNKCE ---
   const addParticipant = async (name: string) => { if (!trip) return; await supabase.from('participants').insert([{ trip_id: trip.id, name }]); fetchTripData(); };
   const deleteParticipant = async (id: number) => { await supabase.from('participants').delete().eq('id', id); fetchTripData(); };
   
@@ -128,7 +128,9 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
   
   const saveDetails = async (notes: string, photoLink: string) => { if(!trip) return; const { data } = await supabase.from('trip_details').select('id').eq('trip_id', trip.id).maybeSingle(); if (data) await supabase.from('trip_details').update({ notes, photo_link: photoLink }).eq('trip_id', trip.id); else await supabase.from('trip_details').insert([{ trip_id: trip.id, notes, photo_link: photoLink }]); };
   
-  const addEvent = async (event: { title: string, time: string, date: string, color: string }) => { if (!trip) return; await supabase.from('events').insert([{ trip_id: trip.id, ...event }]); fetchTripData(); };
+  // ZMĚNA: Přidání location do addEvent a editEvent
+  const addEvent = async (event: { title: string, location: string, time: string, date: string, color: string }) => { if (!trip) return; await supabase.from('events').insert([{ trip_id: trip.id, ...event }]); fetchTripData(); };
+  const editEvent = async (id: number, updatedData: { title: string, location: string, time: string, date: string, color: string }) => { await supabase.from('events').update(updatedData).eq('id', id); fetchTripData(); };
   const deleteEvent = async (id: number) => { await supabase.from('events').delete().eq('id', id); fetchTripData(); };
 
   const handleUpdateTripFromSettings = async (updatedData: any) => {
@@ -190,6 +192,7 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
                 trip={trip}
                 onAddEvent={addEvent}
                 onDeleteEvent={deleteEvent}
+                onEditEvent={editEvent}
             />
           )}
 
