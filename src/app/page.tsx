@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import Logo from '@/components/Logo';
+import Logo from '@/components/Logo'; // Import nového loga
 
 // --- IKONY ---
 const PlusIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>;
@@ -22,6 +22,7 @@ export default function TripenziApp() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [trips, setTrips] = useState<any[]>([]);
   
+  // STAVY PRO FILTR A ŘAZENÍ
   const [filter, setFilter] = useState<'all' | 'future' | 'active' | 'past'>('all');
   const [sortBy, setSortBy] = useState<'date' | 'alphabet'>('date');
 
@@ -52,23 +53,29 @@ export default function TripenziApp() {
       return textDate || "Bez data";
   };
 
+  // --- ODPOČET ---
   const getCountdownStatus = (startDate?: string, endDate?: string) => {
       if (!startDate) return null;
+      
       const now = new Date();
       const start = new Date(startDate);
       const end = endDate ? new Date(endDate) : new Date(start);
+      
       end.setHours(23, 59, 59);
       start.setHours(0, 0, 0);
 
       const diffStart = start.getTime() - now.getTime();
       const baseStyle = "bg-yellow-400 text-yellow-900 border-yellow-200";
 
+      // 1. Budoucí
       if (diffStart > 0) {
           const days = Math.floor(diffStart / (1000 * 60 * 60 * 24));
           const hours = Math.floor((diffStart % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
           if (days > 0) return { text: `⏳ Za ${days} dní`, style: baseStyle };
           return { text: `⏳ Za ${hours} hod`, style: baseStyle };
       }
+
+      // 2. Probíhající
       if (now <= end) {
          const totalDuration = end.getTime() - start.getTime();
          const totalDays = Math.ceil(totalDuration / (1000 * 60 * 60 * 24)) || 1;
@@ -76,6 +83,8 @@ export default function TripenziApp() {
          const currentDay = Math.floor(elapsed / (1000 * 60 * 60 * 24)) + 1;
          return { text: `🚀 Den ${currentDay}/${totalDays}`, style: baseStyle };
       }
+
+      // 3. Minulost
       return { text: "🏁 Skončilo", style: baseStyle };
   };
 
@@ -83,6 +92,7 @@ export default function TripenziApp() {
     if (!currentUser) return;
     const { data: memberData } = await supabase.from('trip_members').select('trip_id').eq('user_id', currentUser.custom_id);
     if (!memberData || memberData.length === 0) { setTrips([]); return; }
+    
     const tripIds = memberData.map(m => m.trip_id);
     const { data, error } = await supabase.from('trips').select('*').in('id', tripIds);
 
@@ -112,6 +122,7 @@ export default function TripenziApp() {
 
   useEffect(() => { if (currentUser) loadTrips(); }, [currentUser, loadTrips]);
 
+  // --- LOGIKA FILTROVÁNÍ A ŘAZENÍ ---
   const filteredAndSortedTrips = useMemo(() => {
       let result = [...trips];
       const now = new Date();
@@ -122,25 +133,31 @@ export default function TripenziApp() {
               const end = trip.end_date ? new Date(trip.end_date) : new Date(start);
               end.setHours(23, 59, 59);
               start.setHours(0, 0, 0);
+
               if (filter === 'future') return start > now;
               if (filter === 'active') return now >= start && now <= end;
               if (filter === 'past') return now > end;
               return true;
           });
       }
+
       result.sort((a, b) => {
-          if (sortBy === 'alphabet') return a.name.localeCompare(b.name);
-          else {
+          if (sortBy === 'alphabet') {
+              return a.name.localeCompare(b.name);
+          } else {
               const dateA = new Date(a.start_date || 0).getTime();
               const dateB = new Date(b.start_date || 0).getTime();
               return dateB - dateA;
           }
       });
+
       return result;
   }, [trips, filter, sortBy]);
 
+
   const loginUser = (user: User) => { setCurrentUser(user); localStorage.setItem("tripenzi_session", JSON.stringify(user)); setEditUserName(user.name); setEditUserAvatar(user.avatar || "👤"); };
   const handleLogout = () => { setCurrentUser(null); setTrips([]); localStorage.removeItem("tripenzi_session"); setAuthMode("login"); };
+
   const handleRegister = async (e: React.FormEvent) => { e.preventDefault(); if (!authInputName.trim()) return; const randomId = `#${Math.floor(1000 + Math.random() * 9000)}`; const { data } = await supabase.from('users').insert([{ custom_id: randomId, name: authInputName, avatar: "👤" }]).select().single(); if (data) loginUser(data); else setAuthError("Chyba registrace."); };
   const handleLogin = async (e: React.FormEvent) => { e.preventDefault(); const searchID = authInputID.startsWith('#') ? authInputID : `#${authInputID}`; const { data } = await supabase.from('users').select('*').eq('custom_id', searchID).single(); if (data) loginUser(data); else setAuthError("Uživatel nenalezen."); };
   const handleUpdateProfile = async () => { if(!currentUser) return; const { error } = await supabase.from('users').update({ name: editUserName, avatar: editUserAvatar }).eq('id', currentUser.id); if(!error) { const updatedUser = { ...currentUser, name: editUserName, avatar: editUserAvatar }; loginUser(updatedUser); setIsProfileOpen(false); }};
@@ -165,38 +182,40 @@ export default function TripenziApp() {
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-indigo-600"></div></div>;
 
-  // --- SJEDNOCENÉ STYLY KONTEJNERŮ ---
   const inputStyle = "w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 font-medium text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all placeholder-slate-400";
   const btnPrimary = "w-full py-4 rounded-2xl font-bold text-lg shadow-xl shadow-slate-200 bg-slate-900 text-white hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2";
   const btnAction = "w-full py-3 rounded-xl font-bold bg-indigo-600 text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-transform flex items-center justify-center";
   
-  // ZDE: Větší radius a jemnější stíny pro karty
   const cardStyle = "block bg-white rounded-[2rem] p-5 shadow-sm border border-slate-100 relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-xl group mb-4 active:scale-[0.98]";
   
   const tabBtn = "flex-1 py-3 text-sm font-bold rounded-xl transition-all";
   const tabBtnActive = "bg-white shadow-sm text-slate-900";
   const tabBtnInactive = "text-slate-400 hover:text-slate-600";
   
+  // --- FILTRY STYLY ---
   const filterBtnBase = "px-4 py-2.5 rounded-full text-sm font-bold transition-all border flex-shrink-0 active:scale-95";
   const filterBtnActive = "bg-slate-900 text-white border-slate-900 shadow-md";
   const filterBtnInactive = "bg-white text-slate-500 border-slate-200 hover:bg-slate-50 shadow-sm";
 
-  // --- MODAL WRAPPER (Sjednocený styl pro pop-up okna) ---
+  // --- MODAL WRAPPER ---
   const ModalWrapper = ({ children, onClose }: { children: React.ReactNode, onClose: () => void }) => (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
-        {/* ZDE: rounded-[2.5rem] pro moderní vzhled */}
         <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl relative z-10 animate-in fade-in zoom-in duration-200 border border-white/50">
             {children}
         </div>
     </div>
   );
 
+  // --- LOGIN SCREEN ---
   if (!currentUser) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-slate-50 font-sans">
         <div className="w-full max-w-sm bg-white p-8 rounded-[2.5rem] shadow-2xl shadow-indigo-100 border border-white">
-          <div className="flex justify-center mb-6"><Logo size="large" /></div>
+          <div className="flex justify-center mb-8">
+            {/* ZMĚNA: Použití varianty badge pro logo */}
+            <Logo size="xl" variant="badge" />
+          </div>
           <div className="flex bg-slate-100 p-1.5 rounded-2xl mb-8">
             <button onClick={() => setAuthMode('login')} className={`${tabBtn} ${authMode === 'login' ? tabBtnActive : tabBtnInactive}`}>Přihlásit</button>
             <button onClick={() => setAuthMode('register')} className={`${tabBtn} ${authMode === 'register' ? tabBtnActive : tabBtnInactive}`}>Registrovat</button>
@@ -208,12 +227,18 @@ export default function TripenziApp() {
     );
   }
 
+  // --- HOME SCREEN ---
   return (
     <div className="min-h-screen pb-32 font-sans relative bg-slate-50">
       
+      {/* HEADER */}
       <header className="bg-white/90 backdrop-blur-xl border-b border-slate-200 sticky top-0 z-30 transition-all shadow-sm">
         <div className="pt-12 pb-2 px-6 flex justify-between items-center">
-          <div><Logo size="normal" /><p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">Vítej zpět, {currentUser.name}</p></div>
+          <div>
+              {/* ZMĚNA: Použití varianty full (ikona + text) pro hlavičku */}
+              <Logo size="normal" variant="full" />
+              <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1 pl-1">Vítej zpět, {currentUser.name}</p>
+          </div>
           <div className="flex items-center gap-3">
              <div className="bg-slate-100 px-3 py-1.5 rounded-xl text-xs font-mono font-bold text-slate-700 border border-slate-200 shadow-sm">{currentUser.custom_id}</div>
              <button onClick={() => setIsProfileOpen(true)} className="w-11 h-11 rounded-full bg-slate-100 border border-slate-200 shadow-sm flex items-center justify-center text-2xl hover:bg-slate-200 transition-transform active:scale-95">{currentUser.avatar || "👤"}</button>

@@ -1,9 +1,6 @@
-/** @type {import('postcss-load-config').Config} */
-const config = {
+module.exports = {
   plugins: {
-    '@tailwindcss/postcss': {}, // <--- Tady byla změna (původně jen 'tailwindcss')
+    '@tailwindcss/postcss': {},
     autoprefixer: {},
   },
-};
-
-export default config;
+}

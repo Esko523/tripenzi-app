@@ -1,12 +1,36 @@
-import type { Metadata } from "next";
-import { Outfit } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const outfit = Outfit({ subsets: ["latin"] });
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+// --- ZDE JE OPRAVA ---
+// Viewport se v Next.js 16+ definuje takto samostatně:
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false, // Zákaz zoomování (native app feel)
+};
 
 export const metadata: Metadata = {
-  title: "Tripenzí",
-  description: "Cestuj chytře.",
+  title: "Tripenzi",
+  description: "Plánování výletů a sdílení nákladů",
+  manifest: "/manifest.json", // Odkaz na PWA manifest
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Tripenzi",
+  },
+  // Tady už "viewport" nesmí být
 };
 
 export default function RootLayout({
@@ -16,13 +40,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="cs">
-      <body 
-        className={`${outfit.className} bg-slate-50 text-slate-900 antialiased`}
-        suppressHydrationWarning={true} 
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <div className="mx-auto max-w-md min-h-screen bg-white shadow-2xl overflow-hidden relative">
-           {children}
-        </div>
+        {children}
       </body>
     </html>
   );
