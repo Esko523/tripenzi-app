@@ -1,6 +1,6 @@
 import type { NextConfig } from "next";
 
-// Načteme defaultní pravidla
+// Import defaultních pravidel
 const defaultRuntimeCaching = require("next-pwa/cache");
 
 const withPWA = require('next-pwa')({
@@ -9,32 +9,24 @@ const withPWA = require('next-pwa')({
   skipWaiting: true,
   disable: process.env.NODE_ENV === 'development',
   
-  // Důležité: Tímto řekneme, že PWA platí pro celý web
-  scope: '/',
-  
+  // TOTO JE TO, CO TI CHYBÍ:
   runtimeCaching: [
-    // 1. PRAVIDLO: VŠECHNY STRÁNKY TRIPŮ (HTML)
-    // Toto je to nejdůležitější pravidlo. Říká:
-    // "Když uživatel jde na adresu, která začíná /trip/, ulož to!"
+    // 1. Ukládání HTML stránek tripů
     {
       urlPattern: ({ url }: { url: URL }) => {
         return url.pathname.startsWith('/trip/');
       },
-      // Strategie: NetworkFirst = Zkus internet. Když nejde, dej Cache.
-      // To je lepší než StaleWhileRevalidate pro dynamické stránky, které se mění.
-      handler: 'NetworkFirst', 
+      handler: 'NetworkFirst', // Zkus internet, když nejde, dej cache
       options: {
         cacheName: 'trip-pages-html',
         expiration: {
           maxEntries: 50,
           maxAgeSeconds: 60 * 60 * 24 * 30, // 30 dní
         },
-        // Pokud internet neodpoví do 2 sekund, použij offline verzi
-        networkTimeoutSeconds: 2, 
+        networkTimeoutSeconds: 2, // Čekej na net max 2 vteřiny
       },
     },
-    
-    // 2. OSTATNÍ (Obrázky, styly, skripty...)
+    // 2. Ostatní pravidla (obrázky, styly...)
     ...defaultRuntimeCaching,
   ],
 });
