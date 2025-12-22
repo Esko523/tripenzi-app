@@ -10,7 +10,6 @@ import InfoView from '@/components/InfoView';
 import WeatherWidget from '@/components/WeatherWidget';
 import { supabase } from '@/lib/supabaseClient';
 
-// --- HLAVNÍ IKONY ---
 const ArrowLeft = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>;
 const ClockIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
 const ListIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>;
@@ -40,7 +39,7 @@ type Trip = {
   shareCode?: string;
   mapLink?: string;
   weatherLocation?: string;
-  pending?: boolean; // Nový příznak
+  pending?: boolean;
 };
 
 export default function TripDetail({ params }: { params: Promise<{ id: string }> }) {
@@ -99,7 +98,7 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
   const fetchTripData = useCallback(async () => {
     const cacheKey = `trip_detail_${shareCodeParam}`;
 
-    // 1. ZKUSÍME CACHE (Detail)
+    // 1. CACHE FIRST (Zkusíme, zda už ho máme)
     const cachedData = localStorage.getItem(cacheKey);
     if (cachedData) {
         setTrip(JSON.parse(cachedData));
@@ -107,12 +106,12 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
     }
 
     try {
-        // 2. ZKUSÍME ONLINE
+        // 2. SERVER FETCH
         const { data: tripData, error: tripError } = await supabase.from('trips').select('*').eq('share_code', shareCodeParam).single();
         
-        // 3. POKUD NENALEZENO NA SERVERU -> ZKUSÍME "PENDING" (Local-first)
+        // 3. POKUD NENÍ NA SERVERU (Chyba nebo 404) -> ZKUSÍME PENDING
         if (tripError || !tripData) { 
-            // Získáme uživatele (potřebujeme jeho ID pro klíč pending listu)
+            // Podíváme se do fronty neodeslaných tripů
             const sessionUser = localStorage.getItem("tripenzi_session");
             if (sessionUser) {
                 const user = JSON.parse(sessionUser);
@@ -121,37 +120,29 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
                 
                 if (pendingListStr) {
                     const pendingList = JSON.parse(pendingListStr);
-                    // Hledáme náš trip v pending seznamu
                     const pendingTrip = pendingList.find((t: any) => t.share_code === shareCodeParam);
                     
                     if (pendingTrip) {
-                        console.log("🚀 Nalezen pending trip v lokální frontě! Otevírám...");
-                        // Sestavíme "falešný" detail objekt
+                        // Je to lokální trip! Vyrobíme "falešná" data a zobrazíme ho.
                         const fakeDetail: Trip = {
                             ...pendingTrip,
                             dateFormatted: formatDateRange(pendingTrip.start_date),
                             events: [],
                             expenses: [],
-                            participants: [{ id: 0, name: user.name }], // Přidáme alespoň vlastníka
+                            participants: [{ id: 0, name: user.name }],
                             spent: 0,
                             pending: true
                         };
                         setTrip(fakeDetail);
                         setLoading(false);
-                        return; // Úspěch - zobrazujeme lokální verzi
+                        return; // HOTOVO - Zobrazujeme lokální verzi
                     }
                 }
             }
-
-            // Pokud jsme nic nenašli ani v pending a nemáme cache -> chyba
-            if (!cachedData && !trip?.pending) {
-               // Zde můžeme nechat logiku pro redirect, ale pro jistotu zatím jen logujeme
-               console.log("Trip nenalezen nikde.");
-            }
-            return;
+            return; // Pokud není ani na serveru, ani v pending, bohužel konec.
         }
 
-        // ... Zbytek funkce pro zpracování online dat (pokud se našly) ...
+        // Pokud jsme našli data na serveru, zpracujeme je normálně
         const tripId = tripData.id;
         const { data: participantsData } = await supabase.from('participants').select('*').eq('trip_id', tripId);
         const { data: expensesData } = await supabase.from('expenses').select('*').eq('trip_id', tripId);
@@ -193,7 +184,7 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
         localStorage.setItem(cacheKey, JSON.stringify(fullTripData));
 
     } catch (err) {
-        console.log("⚠️ Offline mód - zůstávám u cache");
+        console.log("Offline mode - keep cache");
     } finally {
         setLoading(false);
     }
@@ -201,7 +192,6 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
 
   useEffect(() => { fetchTripData(); }, [fetchTripData]);
 
-  // Realtime
   useEffect(() => {
     if (!trip?.id) return;
     const channel = supabase
@@ -215,7 +205,7 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
     return () => { supabase.removeChannel(channel); };
   }, [trip?.id, fetchTripData]);
 
-  // CRUD funkce (přidáme kontrolu pending stavu)
+  // CRUD
   const addParticipant = async (name: string) => { 
       if (!trip) return; 
       if (trip.pending) { alert("Vydrž, trip se musí nejdřív odeslat na server."); return; }
@@ -257,8 +247,6 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
   const handleDeleteTripFromSettings = async () => {
       if(!trip) return;
       if (trip.pending) {
-          // Pokud je pending, smažeme ho jen z fronty
-          // (To by chtělo logiku v localStorage, pro teď jen upozorníme)
           alert("Tento trip ještě není synchronizovaný.");
           return;
       }
@@ -324,7 +312,6 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
       </div>
 
       <div className="-mt-12 bg-white rounded-t-3xl min-h-screen relative z-10 flex flex-col shadow-2xl shadow-black/5">
-        
         <div className="flex border-b border-gray-100 px-2 pt-2">
           <button onClick={() => setActiveTab('plan')} className={`flex-1 py-4 text-xs font-bold flex flex-col items-center gap-1.5 transition-all ${activeTab === 'plan' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}><ListIcon /> PLÁN</button>
           <button onClick={() => setActiveTab('budget')} className={`flex-1 py-4 text-xs font-bold flex flex-col items-center gap-1.5 transition-all ${activeTab === 'budget' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}><WalletIcon /> ROZPOČET</button>
