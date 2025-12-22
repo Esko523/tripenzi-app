@@ -82,6 +82,7 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
     setSplitValues(initialShares);
   }, [participants]);
 
+  // --- NOVÉ: Inteligentní stahování kurzů s mezipamětí ---
   useEffect(() => {
     const fetchRates = async () => {
         const cacheKey = `rates_${baseCurrency}`;
@@ -96,12 +97,12 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
             // Pokud jsou data mladší než 24 hodin, použijeme je a nevoláme API
             if (now - timestamp < oneDay) {
                 setLiveRates(rates);
-                return; // Konec, jsme offline friendly!
+                return; // Konec, data máme
             }
         }
 
         // 2. Pokud nemáme cache nebo je stará, stáhneme nová data (jen když jsme online)
-        if (navigator.onLine) {
+        if (typeof navigator !== 'undefined' && navigator.onLine) {
             setRatesLoading(true);
             try {
                 const response = await fetch(`https://api.exchangerate-api.com/v4/latest/${baseCurrency}`);
@@ -115,7 +116,7 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
                     timestamp: new Date().getTime()
                 }));
             } catch (error) { 
-                console.error("Chyba kurzů", error); 
+                console.error("Chyba při stahování kurzů", error); 
             } finally { 
                 setRatesLoading(false); 
             }
@@ -217,6 +218,7 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
   const handleEqual = () => setDisplayValue(String(calculateResult()));
   const goToStep2 = () => { const res = calculateResult(); if (res > 0) { setDisplayValue(String(res)); setStep(2); } };
   
+  // --- UPRAVENO: Odesílání výdaje + Notifikace ---
   const handleSubmit = () => {
     const finalAmount = calculateResult();
     let payloadForWhom: string[] | undefined = undefined;
@@ -233,18 +235,36 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
         finalSplitDetails = splitValues;
     }
 
+    const payerName = payer || activeParticipants[0];
+
+    // 1. Uložit výdaj (Local & DB)
     onAddExpense({ 
         title: isSettlement ? "Vyrovnání dluhu" : title, 
         amount: finalAmount, 
         currency, 
         exchangeRate, 
-        payer: payer || activeParticipants[0], 
+        payer: payerName, 
         category: isSettlement ? 'settlement' : category, 
         splitMethod: isSettlement ? 'exact' : splitMethod, 
         splitDetails: finalSplitDetails, 
         forWhom: payloadForWhom,
         isSettlement 
     });
+
+    // 2. Odeslat Notifikaci (Pokud jsme online)
+    if (typeof navigator !== 'undefined' && navigator.onLine) {
+        fetch('/api/send-notification', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                title: isSettlement ? "Dluh vyrovnán! 🤝" : "Nový výdaj 💸",
+                message: `${payerName} ${isSettlement ? 'poslal(a)' : 'zaplatil(a)'} ${finalAmount} ${currency} za ${isSettlement ? settleReceiver : (title || 'něco')}`,
+                userIdToExclude: payerName // (Pozn: Zde by mělo být ID, ale pro zjednodušení posíláme jméno, filtrování v API bude nutné upravit na ID, pokud ho máš k dispozici)
+            })
+        }).catch(err => console.error("Notifikace neodeslána", err));
+    }
+
+    // 3. Reset formuláře
     setIsWizardOpen(false); setIsSettlement(false); setStep(1); setDisplayValue("0"); setTitle("");
   };
 
@@ -359,7 +379,6 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
                         </div>
                     </div>
                     
-                    {/* VRÁCENÝ GRAF KATEGORIÍ */}
                     <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
                         <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><ChartIcon /> Útrata podle kategorií</h3>
                         <div className="space-y-3">
@@ -384,13 +403,12 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
         </>
       )}
 
-      {/* DETAIL VÝDAJE (ÚČTENKA - VYLEPŠENÁ) */}
+      {/* DETAIL VÝDAJE (ÚČTENKA) */}
       {selectedExpense && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-md z-50 flex items-center justify-center p-4" onClick={() => setSelectedExpense(null)}>
               <div 
                 className="bg-white/95 w-full max-w-sm p-6 shadow-2xl relative animate-in zoom-in duration-200"
                 style={{ 
-                    // Cik-cak okraj dole
                     clipPath: "polygon(0 0, 100% 0, 100% calc(100% - 10px), 95% 100%, 90% calc(100% - 10px), 85% 100%, 80% calc(100% - 10px), 75% 100%, 70% calc(100% - 10px), 65% 100%, 60% calc(100% - 10px), 55% 100%, 50% calc(100% - 10px), 45% 100%, 40% calc(100% - 10px), 35% 100%, 30% calc(100% - 10px), 25% 100%, 20% calc(100% - 10px), 15% 100%, 10% calc(100% - 10px), 5% 100%, 0 calc(100% - 10px))",
                     paddingBottom: "30px" 
                 }}
@@ -441,7 +459,6 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
             {step === 1 && (
                 <div className="flex-1 flex flex-col">
                     <div className="flex-1 flex flex-col justify-end items-end p-6 bg-gray-50">
-                        {/* ZNOVU PŘIDANÝ VÝBĚR MĚNY */}
                         {!isSettlement && (
                             <div className="relative mb-4">
                                 <button onClick={() => setIsCurrencyDropdownOpen(!isCurrencyDropdownOpen)} className="flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-full border bg-white shadow-sm border-gray-200 text-gray-800">
@@ -461,7 +478,6 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
                             {displayValue} <span className="text-2xl text-gray-400 font-medium">{currency}</span>
                         </div>
                     </div>
-                    {/* OPRAVENÁ MŘÍŽKA KALKULAČKY */}
                     <div className="bg-white p-3 pb-8 grid grid-cols-4 gap-3 shadow-[0_-10px_40px_rgba(0,0,0,0.05)] border-t border-gray-200">
                         {['C', '/', '*', 'back', '7', '8', '9', '-', '4', '5', '6', '+'].map(btn => (
                             <button key={btn} onClick={() => handleCalcInput(btn)} className="aspect-square rounded-2xl bg-gray-50 hover:bg-gray-200 font-bold text-xl text-gray-700 border border-gray-100 flex items-center justify-center">
