@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabaseClient';
 import Logo from '@/components/Logo';
 import LoginView from '@/components/LoginView';
 
-const APP_VERSION = "1.1.0 - Stable Online Create"; 
+const APP_VERSION = "1.1.1 - Realtime List"; 
 
 // --- IKONY ---
 const PlusIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>;
@@ -44,27 +44,27 @@ export default function TripenziApp() {
   const [editUserAvatar, setEditUserAvatar] = useState("👤");
   const [isOnline, setIsOnline] = useState(true);
 
-  // --- SAFE LOAD & CACHE LOGIC ---
+  // --- NAČÍTANIE A CACHE LOGIKA ---
   const loadTrips = useCallback(async () => {
     if (!currentUser) return;
 
     const cacheKey = `trips_cache_${currentUser.custom_id}`;
     
-    // 1. Vždy načteme z cache pro rychlé zobrazení (Offline Read)
+    // 1. Offline Read (Okamžité zobrazenie z pamäte)
     const cachedTripsStr = localStorage.getItem(cacheKey);
     if (cachedTripsStr) {
         setTrips(JSON.parse(cachedTripsStr));
         setLoading(false);
     }
 
-    // 2. Kontrola internetu - pokud nejde, končíme (zůstávají data z cache)
+    // 2. Kontrola internetu
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
         setIsOnline(false);
         setLoading(false);
         return; 
     }
 
-    // 3. Pokud jsme online, stáhneme data ze serveru
+    // 3. Online Fetch (Stiahnutie dát)
     try {
         const { data: memberData } = await supabase.from('trip_members').select('trip_id').eq('user_id', currentUser.custom_id);
         
@@ -87,18 +87,18 @@ export default function TripenziApp() {
                 return { ...trip, spent: Math.round(spent) };
             }));
             
-            // Aktualizujeme stav a uložíme do cache pro příště
+            // Uloženie do pamäte pre offline použitie
             setTrips(tripsWithSpent);
             localStorage.setItem(cacheKey, JSON.stringify(tripsWithSpent));
         }
     } catch (e) {
-        console.log("Chyba při načítání, zůstávám u cache.");
+        console.log("Chyba pri načítaní, ostávajú dáta z cache.");
     } finally {
         setLoading(false);
     }
   }, [currentUser]);
 
-  // --- INIT ---
+  // --- INIT A REALTIME AKTUALIZÁCIE ---
   useEffect(() => {
     const sessionUser = localStorage.getItem("tripenzi_session");
     if (sessionUser) {
@@ -111,24 +111,43 @@ export default function TripenziApp() {
         setLoading(false);
     }
 
-    const handleOnline = () => { setIsOnline(true); loadTrips(); }; // Když se připojí, přenačti data
+    const handleOnline = () => { setIsOnline(true); loadTrips(); };
     const handleOffline = () => setIsOnline(false);
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Bezpečnostní pojistka pro loading
-    const timer = setTimeout(() => setLoading(false), 2000);
+    const timer = setTimeout(() => setLoading(false), 2000); // Poistka proti nekonečnému načítaniu
+
+    // --- REALTIME SUBSCRIPTION (NOVINKA) ---
+    // Toto zabezpečí, že akonáhle sa vytvorí trip, zoznam sa sám obnoví
+    let channel: any;
+    if (sessionUser) {
+        const user = JSON.parse(sessionUser);
+        channel = supabase
+            .channel('home_updates')
+            .on('postgres_changes', { 
+                event: '*', 
+                schema: 'public', 
+                table: 'trip_members',
+                filter: `user_id=eq.${user.custom_id}` 
+            }, () => {
+                console.log("🔔 Zmena v tripoch! Obnovujem zoznam...");
+                loadTrips();
+            })
+            .subscribe();
+    }
 
     return () => {
         window.removeEventListener('online', handleOnline);
         window.removeEventListener('offline', handleOffline);
         clearTimeout(timer);
+        if (channel) supabase.removeChannel(channel);
     };
-  }, [currentUser, loadTrips]);
+  }, [currentUser, loadTrips]); // Pridané loadTrips do dependency array
 
   const handleHardReset = () => {
-      if(confirm("Opravdu vymazat mezipaměť aplikace?")) {
+      if(confirm("Naozaj vymazať vyrovnávaciu pamäť aplikácie?")) {
           localStorage.clear();
           window.location.reload();
       }
@@ -173,19 +192,17 @@ export default function TripenziApp() {
     e.preventDefault(); 
     if (!newName || !currentUser) return;
 
-    // 1. Kontrola internetu (Klíčová změna)
     if (!navigator.onLine) {
-        alert("Pro vytvoření nového tripu musíš být online! 🌐");
+        alert("Pre vytvorenie nového tripu musíš byť online! 🌐");
         return;
     }
 
-    setLoading(true); // Zapneme loading, protože čekáme na server
+    setLoading(true);
 
     const randomColor = ["from-blue-500 to-cyan-400", "from-purple-500 to-indigo-500", "from-green-400 to-emerald-500", "from-yellow-400 to-orange-500", "from-pink-500 to-rose-500"][Math.floor(Math.random() * 4)];
     const shareCode = generateShareCode();
     
     try {
-        // 2. Rovnou posíláme na server
         const { data: tripData, error } = await supabase.from('trips').insert([{ 
             name: newName, 
             color: randomColor, 
@@ -198,18 +215,17 @@ export default function TripenziApp() {
         if (error) throw error;
         
         if (tripData) {
-            // 3. Vytvoření vazeb
             await supabase.from('trip_members').insert([{ trip_id: tripData.id, user_id: currentUser.custom_id }]);
             await supabase.from('participants').insert([{ trip_id: tripData.id, name: currentUser.name }]);
             
-            // 4. Hotovo -> Refresh a přesměrování
+            // Okamžite načítame nový zoznam
             await loadTrips();
             setIsModalOpen(false);
             setNewName("");
             router.push(`/trip/${shareCode}?tab=settings`);
         }
     } catch (err: any) {
-        alert("Chyba při vytváření: " + err.message);
+        alert("Chyba pri vytváraní: " + err.message);
     } finally {
         setLoading(false);
     }
@@ -217,11 +233,11 @@ export default function TripenziApp() {
 
   const handleJoinTrip = async (e: React.FormEvent) => {
       e.preventDefault(); if (!joinCode || !currentUser) return;
-      if (!navigator.onLine) { alert("Pro připojení k tripu musíš být online!"); return; }
+      if (!navigator.onLine) { alert("Pre pripojenie k tripu musíš byť online!"); return; }
       const { data: trip, error } = await supabase.from('trips').select('id, share_code').eq('share_code', joinCode.toUpperCase()).single();
       if (error || !trip) { alert("Trip neexistuje."); return; }
       const { data: existing } = await supabase.from('trip_members').select('*').eq('trip_id', trip.id).eq('user_id', currentUser.custom_id).single();
-      if (existing) { alert("Už jsi členem!"); return; }
+      if (existing) { alert("Už si členom!"); return; }
       await supabase.from('trip_members').insert([{ trip_id: trip.id, user_id: currentUser.custom_id }]); await supabase.from('participants').insert([{ trip_id: trip.id, name: currentUser.name }]); router.push(`/trip/${trip.share_code}`);
   };
 
@@ -276,7 +292,7 @@ export default function TripenziApp() {
           <div>
               <Logo size="normal" variant="full" />
               <div className="flex items-center gap-2 mt-1 pl-1">
-                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Vítej, {currentUser.name}</p>
+                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Vitaj, {currentUser.name}</p>
                 <div className={`flex items-center gap-1 text-[10px] font-black uppercase px-1.5 py-0.5 rounded-md ${isOnline ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-orange-600'}`}>{isOnline ? <WifiIcon /> : <WifiOffIcon />}{isOnline ? 'Online' : 'Offline'}</div>
               </div>
           </div>
@@ -297,6 +313,14 @@ export default function TripenziApp() {
       </header>
       
       <div className="px-6 space-y-6 mt-6">
+        {filteredAndSortedTrips.length === 0 && !loading && (
+            <div className="text-center text-slate-400 py-20 flex flex-col items-center animate-in fade-in">
+                <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mb-4 text-slate-300"><MapPinIcon /></div>
+                <p className="font-bold text-slate-600">Zatiaľ žiadne tripy...</p>
+                <button onClick={() => setIsModalOpen(true)} className="text-indigo-500 text-sm font-bold mt-2">Vytvoriť prvý</button>
+            </div>
+        )}
+
         {filteredAndSortedTrips.map((trip) => {
           const budgetLimit = Number(trip.total_budget) || 0;
           const currency = trip.base_currency || "CZK";
@@ -312,7 +336,7 @@ export default function TripenziApp() {
               <div className="px-1">
                   <div className="flex justify-between items-start mb-3">
                       <h3 className="text-xl font-bold text-slate-900 leading-tight">{trip.name}</h3>
-                      <span className={`text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-lg font-black ${isOwner ? 'bg-indigo-50 text-indigo-600' : 'bg-emerald-50 text-emerald-600'}`}>{isOwner ? 'MOJE' : 'SDÍLENÉ'}</span>
+                      <span className={`text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-lg font-black ${isOwner ? 'bg-indigo-50 text-indigo-600' : 'bg-emerald-50 text-emerald-600'}`}>{isOwner ? 'MOJE' : 'ZDIEĽANÉ'}</span>
                   </div>
                   <div className="bg-slate-100 h-2.5 rounded-full overflow-hidden mb-2 relative">
                       <div className={`h-full rounded-full transition-all duration-1000 ease-out ${trip.spent > budgetLimit && budgetLimit > 0 ? 'bg-rose-500' : 'bg-slate-800'}`} style={{ width: budgetLimit > 0 ? `${Math.min((trip.spent / budgetLimit) * 100, 100)}%` : (trip.spent > 0 ? '100%' : '0%') }}></div>
@@ -335,36 +359,33 @@ export default function TripenziApp() {
         <ModalWrapper onClose={() => setIsModalOpen(false)}>
             <h2 className="text-xl font-bold text-slate-900 mb-6 text-center">Nový Trip</h2>
             <form onSubmit={handleAddTrip} className="space-y-4">
-                <div><label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider pl-1">Název cesty</label><input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Např. Paříž" className={inputStyle} autoFocus /></div>
-                <div className="pt-2 flex gap-3"><button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-2.5 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition text-sm">Zrušit</button><button type="submit" className={btnAction}>Vytvořit</button></div>
+                <div><label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider pl-1">Názov tripu</label><input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Napr. Paríž" className={inputStyle} autoFocus /></div>
+                <div className="pt-2 flex gap-3"><button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-2.5 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition text-sm">Zrušiť</button><button type="submit" className={btnAction}>Vytvoriť</button></div>
             </form>
         </ModalWrapper>
       )}
       
       {isJoinModalOpen && (
         <ModalWrapper onClose={() => setIsJoinModalOpen(false)}>
-            <h2 className="text-2xl font-bold text-slate-900 mb-6 text-center">Připojit se</h2>
+            <h2 className="text-2xl font-bold text-slate-900 mb-6 text-center">Pripojiť sa</h2>
             <form onSubmit={handleJoinTrip} className="space-y-4">
-                <div><label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Kód sdílení</label><input type="text" value={joinCode} onChange={(e) => setJoinCode(e.target.value)} placeholder="ABC-123" className={`${inputStyle} text-center text-2xl tracking-widest uppercase font-mono`} autoFocus /></div>
-                <button type="submit" className={btnPrimary}>Hledat trip</button>
+                <div><label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Kód zdieľania</label><input type="text" value={joinCode} onChange={(e) => setJoinCode(e.target.value)} placeholder="ABC-123" className={`${inputStyle} text-center text-2xl tracking-widest uppercase font-mono`} autoFocus /></div>
+                <button type="submit" className={btnPrimary}>Hľadať trip</button>
             </form>
         </ModalWrapper>
       )}
 
       {isProfileOpen && (
         <ModalWrapper onClose={() => setIsProfileOpen(false)}>
-            <h2 className="text-2xl font-bold text-slate-900 mb-6 text-center">Můj Profil</h2>
+            <h2 className="text-2xl font-bold text-slate-900 mb-6 text-center">Môj Profil</h2>
             <div className="space-y-6">
                 <div className="flex justify-center"><div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center text-6xl shadow-inner border-4 border-white">{editUserAvatar}</div></div>
                 <div className="flex justify-center gap-2 overflow-x-auto pb-2 no-scrollbar">{AVATARS.map(av => (<button key={av} onClick={() => setEditUserAvatar(av)} className={`text-2xl p-2 rounded-xl transition ${editUserAvatar === av ? 'bg-indigo-100 border-2 border-indigo-500' : 'hover:bg-slate-50'}`}>{av}</button>))}</div>
-                <div><label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Jméno</label><input type="text" value={editUserName} onChange={e => setEditUserName(e.target.value)} className={inputStyle} /></div>
-                <button onClick={handleUpdateProfile} className={btnPrimary}>Uložit změny</button>
-                <button onClick={handleLogout} className="w-full py-3 text-rose-500 font-bold hover:bg-rose-50 rounded-xl transition flex items-center justify-center gap-2"><LogOutIcon /> Odhlásit se</button>
-                
-                <button onClick={handleHardReset} className="w-full py-3 mt-4 bg-red-50 text-red-600 font-bold rounded-xl flex items-center justify-center gap-2 text-xs uppercase tracking-wider hover:bg-red-100">
-                    <TrashIcon /> ⚠️ Resetovat aplikaci
-                </button>
-                <p className="text-center text-xs text-slate-300 mt-2">Verze {APP_VERSION}</p>
+                <div><label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Meno</label><input type="text" value={editUserName} onChange={e => setEditUserName(e.target.value)} className={inputStyle} /></div>
+                <button onClick={handleUpdateProfile} className={btnPrimary}>Uložiť zmeny</button>
+                <button onClick={handleLogout} className="w-full py-3 text-rose-500 font-bold hover:bg-rose-50 rounded-xl transition flex items-center justify-center gap-2"><LogOutIcon /> Odhlásiť sa</button>
+                <button onClick={handleHardReset} className="w-full py-3 mt-4 bg-red-50 text-red-600 font-bold rounded-xl flex items-center justify-center gap-2 text-xs uppercase tracking-wider hover:bg-red-100"><TrashIcon /> Vymazať cache</button>
+                <p className="text-center text-xs text-slate-300 mt-2">Verzia {APP_VERSION}</p>
             </div>
         </ModalWrapper>
       )}
