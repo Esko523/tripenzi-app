@@ -1,36 +1,52 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🌍 Tripenzi App
 
-## Getting Started
+**Tripenzi** je moderní cestovní společník navržený jako **Progressive Web App (PWA)**. Umožňuje skupinám přátel plánovat itinerář, sledovat společné výdaje a spravedlivě se vyrovnat – to vše s podporou offline režimu.
 
-First, run the development server:
+![Status](https://img.shields.io/badge/Status-Development-blue)
+![Tech](https://img.shields.io/badge/Built%20with-Next.js%2016%20%2B%20Supabase-black)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## ✨ Hlavní funkce
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 💸 Sdílený rozpočet & Výdaje
+- **Komplexní správa dluhů:** Automatický výpočet "kdo komu dluží" (podobně jako Splitwise).
+- **Podpora více měn:** Automatický přepočet kurzů (např. platba v EUR se přepočte na základní měnu tripu, např. CZK) pomocí API.
+- **Flexibilní dělení:**
+  - Rovným dílem.
+  - Přesnou částkou.
+  - Podle podílů.
+- **Integrovaná kalkulačka:** Rychlé zadávání částek přímo v aplikaci.
+- **Grafy a statistiky:** Přehled útraty podle kategorií (jídlo, doprava, ubytování...) a jednotlivých osob.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 📅 Itinerář a Plánování
+- Denní harmonogram cesty.
+- Integrace s **Google Maps** pro lokace.
+- Barevné štítkování událostí.
+- Možnost úpravy času a data aktivit.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 🚀 Offline First & PWA
+- **Plná funkčnost bez internetu:** Data se ukládají lokálně (`localStorage`) a synchronizují se se serverem (Supabase), jakmile jste online.
+- **Instalace do mobilu:** Aplikace se chová jako nativní appka (díky manifestu a service workerům).
+- Rychlé načítání a cachování dat.
 
-## Learn More
+### 👥 Správa a Sdílení
+- Snadné připojení k tripu pomocí **6místného kódu**.
+- Vlastní uživatelské profily a avatary.
+- Filtrování cest (Budoucí, Probíhající, Minulé).
 
-To learn more about Next.js, take a look at the following resources:
+## 🛠 Použité technologie
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **Frontend:** [Next.js 16](https://nextjs.org/) (App Router), [React 19](https://react.dev/)
+- **Styling:** [Tailwind CSS v4](https://tailwindcss.com/)
+- **Backend & Database:** [Supabase](https://supabase.com/) (PostgreSQL)
+- **PWA:** `@ducanh2912/next-pwa`
+- **Ikony:** Vlastní SVG set + Lucide React style
+- **Data Fetching:** Real-time subscriptions přes Supabase kanály.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## ⚙️ Instalace a spuštění
 
-## Deploy on Vercel
+Pro spuštění projektu lokálně postupujte následovně:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. **Naklonujte repozitář:**
+   ```bash
+   git clone [https://github.com/tvoje-jmeno/tripenzi-app.git](https://github.com/tvoje-jmeno/tripenzi-app.git)
+   cd tripenzi-app
