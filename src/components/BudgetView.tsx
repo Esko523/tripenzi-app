@@ -84,12 +84,42 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
 
   useEffect(() => {
     const fetchRates = async () => {
-        setRatesLoading(true);
-        try {
-            const response = await fetch(`https://api.exchangerate-api.com/v4/latest/${baseCurrency}`);
-            const data = await response.json();
-            setLiveRates(data.rates);
-        } catch (error) { console.error("Chyba kurzů", error); } finally { setRatesLoading(false); }
+        const cacheKey = `rates_${baseCurrency}`;
+        const cachedData = localStorage.getItem(cacheKey);
+        
+        // 1. Zkusíme načíst z cache
+        if (cachedData) {
+            const { rates, timestamp } = JSON.parse(cachedData);
+            const now = new Date().getTime();
+            const oneDay = 24 * 60 * 60 * 1000;
+
+            // Pokud jsou data mladší než 24 hodin, použijeme je a nevoláme API
+            if (now - timestamp < oneDay) {
+                setLiveRates(rates);
+                return; // Konec, jsme offline friendly!
+            }
+        }
+
+        // 2. Pokud nemáme cache nebo je stará, stáhneme nová data (jen když jsme online)
+        if (navigator.onLine) {
+            setRatesLoading(true);
+            try {
+                const response = await fetch(`https://api.exchangerate-api.com/v4/latest/${baseCurrency}`);
+                const data = await response.json();
+                
+                setLiveRates(data.rates);
+                
+                // Uložíme do cache s aktuálním časem
+                localStorage.setItem(cacheKey, JSON.stringify({
+                    rates: data.rates,
+                    timestamp: new Date().getTime()
+                }));
+            } catch (error) { 
+                console.error("Chyba kurzů", error); 
+            } finally { 
+                setRatesLoading(false); 
+            }
+        }
     };
     fetchRates();
   }, [baseCurrency]);

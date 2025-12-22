@@ -6,8 +6,9 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import Logo from '@/components/Logo';
 import LoginView from '@/components/LoginView';
+import NotificationButton from '@/components/NotificationButton';
 
-const APP_VERSION = "1.2.3"; // Aktualizovaná verze
+const APP_VERSION = "1.2.5"; // Aktualizovaná verze
 
 // --- IKONY ---
 const PlusIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>;
@@ -442,6 +443,9 @@ export default function TripenziApp() {
                 <div className="flex justify-center"><div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center text-6xl shadow-inner border-4 border-white">{editUserAvatar}</div></div>
                 <div className="flex justify-center gap-2 overflow-x-auto pb-2 no-scrollbar">{AVATARS.map(av => (<button key={av} onClick={() => setEditUserAvatar(av)} className={`text-2xl p-2 rounded-xl transition ${editUserAvatar === av ? 'bg-indigo-100 border-2 border-indigo-500' : 'hover:bg-slate-50'}`}>{av}</button>))}</div>
                 <div><label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Jméno</label><input type="text" value={editUserName} onChange={e => setEditUserName(e.target.value)} className={inputStyle} /></div>
+                <div className="flex justify-center py-2">
+                    <NotificationButton userId={currentUser.custom_id} />
+                </div>
                 <button onClick={handleUpdateProfile} className={btnPrimary}>Uložit změny</button>
                 <button onClick={handleLogout} className="w-full py-3 text-rose-500 font-bold hover:bg-rose-50 rounded-xl transition flex items-center justify-center gap-2"><LogOutIcon /> Odhlásit se</button>
                 <button onClick={handleHardReset} className="w-full py-3 mt-4 bg-red-50 text-red-600 font-bold rounded-xl flex items-center justify-center gap-2 text-xs uppercase tracking-wider hover:bg-red-100">
