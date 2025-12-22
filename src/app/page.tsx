@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabaseClient';
 import Logo from '@/components/Logo';
 import LoginView from '@/components/LoginView';
 
-const APP_VERSION = "1.0.4 - Manual Sync"; 
+const APP_VERSION = "1.0.5 - Fixed Loading"; 
 
 // --- IKONY ---
 const PlusIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>;
@@ -20,6 +20,7 @@ const CloudUploadIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16"
 const WifiIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h.01"/><path d="M2 8.82a15 15 0 0 1 20 0"/><path d="M5 12.859a10 10 0 0 1 14 0"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/></svg>;
 const WifiOffIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="2" x2="22" y1="2" y2="22"/><path d="M12 20h.01"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/><path d="M5 12.859a10 10 0 0 1 5.17-2.69"/><path d="M19 12.859a10 10 0 0 0-2.007-1.523"/><path d="M2 8.82a15 15 0 0 1 4.17-2.69"/><path d="M22 8.82a15 15 0 0 0-11.288-3.136"/><path d="M16.72 11.06a10 10 0 0 1 5.17 2.69"/></svg>;
 const RefreshIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>;
+const TrashIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>;
 
 type User = { id: number; custom_id: string; name: string; avatar?: string; };
 type Trip = { id: number; name: string; start_date?: string; end_date?: string; color: string; spent: number; total_budget?: number; base_currency?: string; share_code: string; owner_id: string; cover_image?: string; date?: string; pending?: boolean; syncError?: string; };
@@ -48,7 +49,18 @@ export default function TripenziApp() {
   
   const isSyncingRef = useRef(false);
 
-  // --- LOCAL FIRST & SELF-HEALING SYNC ---
+  // --- SAFE RESET FUNCTION ---
+  const handleHardReset = () => {
+      if(confirm("Opravdu vymazat data aplikace z telefonu? (Data na serveru zůstanou)")) {
+          localStorage.clear();
+          if ('serviceWorker' in navigator) {
+              navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                  for(let registration of registrations) { registration.unregister(); }
+              });
+          }
+          window.location.reload();
+      }
+  };
 
   const syncPendingTrips = async (user: User, manual = false) => {
     if (isSyncingRef.current) return;
@@ -56,18 +68,16 @@ export default function TripenziApp() {
     const pendingKey = `pending_trips_${user.custom_id}`;
     const pendingTripsStr = localStorage.getItem(pendingKey);
     
-    // Pokud není co synchronizovat a je to manuální akce, jen reloadnem data
     if (!pendingTripsStr || JSON.parse(pendingTripsStr).length === 0) {
         if(manual) {
-            alert("Vše je aktuální! Zkouším obnovit data ze serveru...");
             await loadTrips();
+            alert("Vše je aktuální! Data obnovena.");
         }
         return;
     }
 
     const pendingTrips: Trip[] = JSON.parse(pendingTripsStr);
     
-    // START SYNC
     isSyncingRef.current = true;
     setIsSyncing(true);
     console.log("🚀 Spouštím synchronizaci...");
@@ -78,7 +88,7 @@ export default function TripenziApp() {
 
     for (const trip of pendingTrips) {
         try {
-            console.log(`Zpracovávám trip: ${trip.name} (${trip.share_code})`);
+            console.log(`Sync trip: ${trip.name} (${trip.share_code})`);
             
             // 1. Check existence
             const { data: existingTrip } = await supabase
@@ -102,8 +112,6 @@ export default function TripenziApp() {
 
                 if (insertError) throw insertError;
                 finalTripId = newTripData.id;
-            } else {
-                console.log("Trip už existuje, propojuji...");
             }
 
             // 3. Link user
@@ -113,6 +121,7 @@ export default function TripenziApp() {
                     { onConflict: 'trip_id,user_id' }
                 );
                 
+                // Check if participant exists to avoid duplicate name error
                 const { data: existingPart } = await supabase.from('participants')
                     .select('id')
                     .eq('trip_id', finalTripId)
@@ -133,7 +142,6 @@ export default function TripenziApp() {
         }
     }
 
-    // Update Queue
     if (newPendingList.length > 0) {
         localStorage.setItem(pendingKey, JSON.stringify(newPendingList));
     } else {
@@ -145,11 +153,11 @@ export default function TripenziApp() {
 
     if (somethingChanged) {
         if(manual || successCount > 0) {
-            alert(`🎉 Synchronizace hotova! Odesláno: ${successCount} tripů.`);
+            // alert(`🎉 Hotovo! Synchronizováno ${successCount} tripů.`);
         }
         await loadTrips();
     } else if (newPendingList.length > 0 && manual) {
-        alert("⚠️ Synchronizace selhala. Zkontroluj internet.");
+        alert("⚠️ Některé tripy se nepodařilo odeslat. Zkus to později.");
     }
   };
 
@@ -172,11 +180,13 @@ export default function TripenziApp() {
     }
 
     setTrips(allTrips);
-    setLoading(false);
+    // Pokud máme data z cache, vypneme loading hned, ať uživatel nečeká
+    if (allTrips.length > 0) setLoading(false);
 
     // 2. Online Check
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
         setIsOnline(false);
+        setLoading(false); // DŮLEŽITÉ!
         return; 
     }
 
@@ -204,18 +214,15 @@ export default function TripenziApp() {
                 return { ...trip, spent: Math.round(spent) };
             }));
             
-            // Clean up pending list based on what server returned
             const currentPendingStr = localStorage.getItem(pendingKey);
             let finalTrips = tripsWithSpent;
             if (currentPendingStr) {
                  const currentPending: Trip[] = JSON.parse(currentPendingStr);
-                 // Keep only pending trips that are NOT in server response yet
                  const serverCodes = new Set(tripsWithSpent.map(t => t.share_code));
                  const stillPending = currentPending.filter(t => !serverCodes.has(t.share_code));
                  
                  finalTrips = [...stillPending, ...tripsWithSpent];
                  
-                 // Update pending storage if items were removed
                  if (stillPending.length < currentPending.length) {
                      if (stillPending.length === 0) localStorage.removeItem(pendingKey);
                      else localStorage.setItem(pendingKey, JSON.stringify(stillPending));
@@ -227,6 +234,9 @@ export default function TripenziApp() {
         }
     } catch (e) {
         console.log("Load error");
+    } finally {
+        // TOTO TADY CHYBĚLO! Ať se stane cokoliv (úspěch nebo chyba), přestaň se točit.
+        setLoading(false);
     }
   }, [currentUser]);
 
@@ -253,9 +263,13 @@ export default function TripenziApp() {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
+    // Timeout záchrana - kdyby se loading zasekl, po 3s ho vypni
+    const safetyTimeout = setTimeout(() => setLoading(false), 3000);
+
     return () => {
         window.removeEventListener('online', handleOnline);
         window.removeEventListener('offline', handleOffline);
+        clearTimeout(safetyTimeout);
     };
   }, [currentUser]);
 
@@ -410,7 +424,6 @@ export default function TripenziApp() {
               <Logo size="normal" variant="full" />
               <div className="flex items-center gap-2 mt-1 pl-1">
                 <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Vítej, {currentUser.name}</p>
-                {/* ZDE JE NOVÉ TLAČÍTKO SYNC */}
                 <button 
                     onClick={() => syncPendingTrips(currentUser, true)} 
                     disabled={isSyncing || !isOnline}
@@ -419,7 +432,6 @@ export default function TripenziApp() {
                     {isSyncing ? <CloudUploadIcon /> : <RefreshIcon />}
                     {isSyncing ? 'Sync...' : 'Sync'}
                 </button>
-                
                 <div className={`flex items-center gap-1 text-[10px] font-black uppercase px-1.5 py-0.5 rounded-md ${isOnline ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-orange-600'}`}>
                     {isOnline ? <WifiIcon /> : <WifiOffIcon />}
                     {isOnline ? 'Online' : 'Offline'}
@@ -538,7 +550,12 @@ export default function TripenziApp() {
                 <div><label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Jméno</label><input type="text" value={editUserName} onChange={e => setEditUserName(e.target.value)} className={inputStyle} /></div>
                 <button onClick={handleUpdateProfile} className={btnPrimary}>Uložit změny</button>
                 <button onClick={handleLogout} className="w-full py-3 text-rose-500 font-bold hover:bg-rose-50 rounded-xl transition flex items-center justify-center gap-2"><LogOutIcon /> Odhlásit se</button>
-                <p className="text-center text-xs text-slate-300 mt-4">Verze {APP_VERSION}</p>
+                
+                {/* ZDE JE NOVÉ TLAČÍTKO PRO RESET */}
+                <button onClick={handleHardReset} className="w-full py-3 mt-4 bg-red-50 text-red-600 font-bold rounded-xl flex items-center justify-center gap-2 text-xs uppercase tracking-wider hover:bg-red-100">
+                    <TrashIcon /> ⚠️ Resetovat aplikaci
+                </button>
+                <p className="text-center text-xs text-slate-300 mt-2">Verze {APP_VERSION}</p>
             </div>
         </ModalWrapper>
       )}
