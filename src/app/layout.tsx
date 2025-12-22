@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import CacheLogger from "@/components/CacheLogger";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -40,11 +41,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="cs">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+      <body>
+        {/* PŘIDAT LOGGER SEM: */}
+        <CacheLogger />
+        
         {children}
       </body>
     </html>
   );
 }
+
