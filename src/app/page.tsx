@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import Logo from '@/components/Logo';
 import LoginView from '@/components/LoginView';
 
-const APP_VERSION = "1.0.7 - Safe Sync"; 
+const APP_VERSION = "1.1.0 - Stable Online Create"; 
 
 // --- IKONY ---
 const PlusIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>;
@@ -16,14 +16,12 @@ const CalendarIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" he
 const LogOutIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>;
 const LinkIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>;
 const SortIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></svg>;
-const CloudUploadIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg>;
 const WifiIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h.01"/><path d="M2 8.82a15 15 0 0 1 20 0"/><path d="M5 12.859a10 10 0 0 1 14 0"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/></svg>;
 const WifiOffIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="2" x2="22" y1="2" y2="22"/><path d="M12 20h.01"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/><path d="M5 12.859a10 10 0 0 1 5.17-2.69"/><path d="M19 12.859a10 10 0 0 0-2.007-1.523"/><path d="M2 8.82a15 15 0 0 1 4.17-2.69"/><path d="M22 8.82a15 15 0 0 0-11.288-3.136"/><path d="M16.72 11.06a10 10 0 0 1 5.17 2.69"/></svg>;
-const RefreshIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>;
 const TrashIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>;
 
 type User = { id: number; custom_id: string; name: string; avatar?: string; };
-type Trip = { id: number; name: string; start_date?: string; end_date?: string; color: string; spent: number; total_budget?: number; base_currency?: string; share_code: string; owner_id: string; cover_image?: string; date?: string; pending?: boolean; syncError?: string; };
+type Trip = { id: number; name: string; start_date?: string; end_date?: string; color: string; spent: number; total_budget?: number; base_currency?: string; share_code: string; owner_id: string; cover_image?: string; date?: string; };
 const AVATARS = ["👤", "😎", "🤠", "👽", "🤖", "👻", "🦊", "🐯", "🐼", "🦄"];
 
 export default function TripenziApp() {
@@ -44,126 +42,35 @@ export default function TripenziApp() {
   
   const [editUserName, setEditUserName] = useState("");
   const [editUserAvatar, setEditUserAvatar] = useState("👤");
-  const [isSyncing, setIsSyncing] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
-  
-  const isSyncingRef = useRef(false);
 
-  // --- ZÁCHRANNÁ BRZDA (KILL SWITCH) ---
-  useEffect(() => {
-    const timer = setTimeout(() => {
-        setLoading(false);
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, []);
-
-  const handleHardReset = () => {
-      if(confirm("Opravdu vymazat data aplikace z telefonu?")) {
-          localStorage.clear();
-          if ('serviceWorker' in navigator) {
-              navigator.serviceWorker.getRegistrations().then(function(registrations) {
-                  for(let registration of registrations) { registration.unregister(); }
-              });
-          }
-          window.location.reload();
-      }
-  };
-
-  // --- SAFE SYNC ---
-  // Jen odesílá, ale NEMAŽE z pending listu. Úklid dělá až loadTrips.
-  const syncPendingTrips = async (user: User, manual = false) => {
-    if (isSyncingRef.current) return;
-    
-    const pendingKey = `pending_trips_${user.custom_id}`;
-    const pendingTripsStr = localStorage.getItem(pendingKey);
-    
-    if (!pendingTripsStr || JSON.parse(pendingTripsStr).length === 0) {
-        if(manual) {
-            alert("Vše je aktuální! Obnovuji data...");
-            await loadTrips();
-        }
-        return;
-    }
-
-    const pendingTrips: Trip[] = JSON.parse(pendingTripsStr);
-    
-    isSyncingRef.current = true;
-    setIsSyncing(true);
-
-    let somethingChanged = false;
-
-    for (const trip of pendingTrips) {
-        try {
-            // 1. Check
-            const { data: existingTrip } = await supabase.from('trips').select('id').eq('share_code', trip.share_code).maybeSingle();
-            let finalTripId = existingTrip?.id;
-
-            // 2. Insert
-            if (!existingTrip) {
-                const { data: newTripData, error: insertError } = await supabase.from('trips').insert([{ name: trip.name, color: trip.color, owner_id: user.custom_id, base_currency: 'CZK', total_budget: 0, share_code: trip.share_code }]).select().single();
-                if (insertError && insertError.code !== '23505') throw insertError;
-                if (newTripData) finalTripId = newTripData.id;
-            }
-
-            // 3. Link
-            if (finalTripId || existingTrip?.id) {
-                const targetId = finalTripId || existingTrip?.id;
-                await supabase.from('trip_members').upsert({ trip_id: targetId, user_id: user.custom_id }, { onConflict: 'trip_id,user_id' });
-                
-                const { data: existingPart } = await supabase.from('participants').select('id').eq('trip_id', targetId).eq('name', user.name).maybeSingle();
-                if (!existingPart) await supabase.from('participants').insert([{ trip_id: targetId, name: user.name }]);
-                
-                somethingChanged = true;
-            }
-        } catch (e) {
-            console.error("Sync error:", e);
-        }
-    }
-
-    // POZOR: Zde NEMAŽEME pending items. To udělá až loadTrips, až si ověří, že tam jsou.
-    
-    isSyncingRef.current = false;
-    setIsSyncing(false);
-
-    if (somethingChanged) {
-        await loadTrips(); // Toto zavolá úklidovou četu
-    }
-  };
-
+  // --- SAFE LOAD & CACHE LOGIC ---
   const loadTrips = useCallback(async () => {
     if (!currentUser) return;
 
     const cacheKey = `trips_cache_${currentUser.custom_id}`;
-    const pendingKey = `pending_trips_${currentUser.custom_id}`;
     
-    // 1. Načíst lokální data
+    // 1. Vždy načteme z cache pro rychlé zobrazení (Offline Read)
     const cachedTripsStr = localStorage.getItem(cacheKey);
-    let allTrips: Trip[] = cachedTripsStr ? JSON.parse(cachedTripsStr) : [];
-    
-    const pendingTripsStr = localStorage.getItem(pendingKey);
-    if (pendingTripsStr) {
-        const pendingTrips: Trip[] = JSON.parse(pendingTripsStr);
-        const existingCodes = new Set(allTrips.map(t => t.share_code));
-        const uniquePending = pendingTrips.filter(t => !existingCodes.has(t.share_code));
-        allTrips = [...uniquePending, ...allTrips];
+    if (cachedTripsStr) {
+        setTrips(JSON.parse(cachedTripsStr));
+        setLoading(false);
     }
 
-    setTrips(allTrips);
-    if (allTrips.length > 0) setLoading(false);
-
+    // 2. Kontrola internetu - pokud nejde, končíme (zůstávají data z cache)
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
         setIsOnline(false);
-        setLoading(false); 
+        setLoading(false);
         return; 
     }
 
+    // 3. Pokud jsme online, stáhneme data ze serveru
     try {
         const { data: memberData } = await supabase.from('trip_members').select('trip_id').eq('user_id', currentUser.custom_id);
         
         if (!memberData || memberData.length === 0) { 
-            const justPending = allTrips.filter(t => t.pending);
-            setTrips(justPending);
-            // Pokud server říká prázdno, nemažeme cache, pokud máme pending!
+            setTrips([]);
+            localStorage.removeItem(cacheKey);
             return; 
         }
         
@@ -180,32 +87,12 @@ export default function TripenziApp() {
                 return { ...trip, spent: Math.round(spent) };
             }));
             
-            // --- ZDE PROBÍHÁ ÚKLID (CLEANUP) ---
-            // Podíváme se, které tripy z "pending" nám server vrátil.
-            const currentPendingStr = localStorage.getItem(pendingKey);
-            let finalTrips = tripsWithSpent;
-            
-            if (currentPendingStr) {
-                 const currentPending: Trip[] = JSON.parse(currentPendingStr);
-                 const serverCodes = new Set(tripsWithSpent.map(t => t.share_code));
-                 
-                 // Zůstávají jen ty pending, které server JEŠTĚ NEVRÁTIL
-                 const stillPending = currentPending.filter(t => !serverCodes.has(t.share_code));
-                 
-                 finalTrips = [...stillPending, ...tripsWithSpent];
-                 
-                 // Pokud jsme nějaké pending tripy našli na serveru, odstraníme je z pending storage
-                 if (stillPending.length < currentPending.length) {
-                     if (stillPending.length === 0) localStorage.removeItem(pendingKey);
-                     else localStorage.setItem(pendingKey, JSON.stringify(stillPending));
-                 }
-            }
-
-            setTrips(finalTrips);
+            // Aktualizujeme stav a uložíme do cache pro příště
+            setTrips(tripsWithSpent);
             localStorage.setItem(cacheKey, JSON.stringify(tripsWithSpent));
         }
     } catch (e) {
-        console.log("Load error");
+        console.log("Chyba při načítání, zůstávám u cache.");
     } finally {
         setLoading(false);
     }
@@ -219,25 +106,33 @@ export default function TripenziApp() {
         setCurrentUser(user);
         setEditUserName(user.name);
         setEditUserAvatar(user.avatar || "👤");
-        if (typeof navigator !== 'undefined') {
-            setIsOnline(navigator.onLine);
-            if (navigator.onLine) syncPendingTrips(user);
-        }
+        if (typeof navigator !== 'undefined') setIsOnline(navigator.onLine);
     } else {
         setLoading(false);
     }
 
-    const handleOnline = () => { setIsOnline(true); if(currentUser) syncPendingTrips(currentUser); };
+    const handleOnline = () => { setIsOnline(true); loadTrips(); }; // Když se připojí, přenačti data
     const handleOffline = () => setIsOnline(false);
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+
+    // Bezpečnostní pojistka pro loading
     const timer = setTimeout(() => setLoading(false), 2000);
+
     return () => {
         window.removeEventListener('online', handleOnline);
         window.removeEventListener('offline', handleOffline);
         clearTimeout(timer);
     };
-  }, [currentUser]);
+  }, [currentUser, loadTrips]);
+
+  const handleHardReset = () => {
+      if(confirm("Opravdu vymazat mezipaměť aplikace?")) {
+          localStorage.clear();
+          window.location.reload();
+      }
+  };
 
   const formatDateRange = (start?: string, end?: string, textDate?: string) => {
     if (start) {
@@ -266,7 +161,6 @@ export default function TripenziApp() {
       localStorage.setItem("tripenzi_session", JSON.stringify(user)); 
       setEditUserName(user.name); 
       setEditUserAvatar(user.avatar || "👤"); 
-      syncPendingTrips(user);
   };
   
   const handleLogout = () => { setCurrentUser(null); setTrips([]); localStorage.removeItem("tripenzi_session"); };
@@ -274,18 +168,51 @@ export default function TripenziApp() {
   const handleUpdateProfile = async () => { if(!currentUser) return; const { error } = await supabase.from('users').update({ name: editUserName, avatar: editUserAvatar }).eq('id', currentUser.id); if(!error) { const updatedUser = { ...currentUser, name: editUserName, avatar: editUserAvatar }; loginUser(updatedUser); setIsProfileOpen(false); }};
   const generateShareCode = () => { const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"; let result = ""; for (let i = 0; i < 6; i++) { if (i === 3) result += "-"; result += chars.charAt(Math.floor(Math.random() * chars.length)); } return result; };
 
+  // --- ONLINE CREATE TRIP ---
   const handleAddTrip = async (e: React.FormEvent) => {
     e.preventDefault(); 
     if (!newName || !currentUser) return;
+
+    // 1. Kontrola internetu (Klíčová změna)
+    if (!navigator.onLine) {
+        alert("Pro vytvoření nového tripu musíš být online! 🌐");
+        return;
+    }
+
+    setLoading(true); // Zapneme loading, protože čekáme na server
+
     const randomColor = ["from-blue-500 to-cyan-400", "from-purple-500 to-indigo-500", "from-green-400 to-emerald-500", "from-yellow-400 to-orange-500", "from-pink-500 to-rose-500"][Math.floor(Math.random() * 4)];
     const shareCode = generateShareCode();
-    const newTrip: Trip = { id: Math.floor(Math.random() * 1000000), name: newName, color: randomColor, owner_id: currentUser.custom_id, base_currency: 'CZK', total_budget: 0, share_code: shareCode, spent: 0, pending: true, start_date: new Date().toISOString() };
-    setTrips(prev => [newTrip, ...prev]); setIsModalOpen(false); setNewName("");
-    const pendingKey = `pending_trips_${currentUser.custom_id}`;
-    const currentPending = JSON.parse(localStorage.getItem(pendingKey) || "[]");
-    currentPending.push(newTrip);
-    localStorage.setItem(pendingKey, JSON.stringify(currentPending));
-    if (navigator.onLine) syncPendingTrips(currentUser);
+    
+    try {
+        // 2. Rovnou posíláme na server
+        const { data: tripData, error } = await supabase.from('trips').insert([{ 
+            name: newName, 
+            color: randomColor, 
+            owner_id: currentUser.custom_id, 
+            base_currency: 'CZK', 
+            total_budget: 0, 
+            share_code: shareCode 
+        }]).select().single();
+
+        if (error) throw error;
+        
+        if (tripData) {
+            // 3. Vytvoření vazeb
+            await supabase.from('trip_members').insert([{ trip_id: tripData.id, user_id: currentUser.custom_id }]);
+            await supabase.from('participants').insert([{ trip_id: tripData.id, name: currentUser.name }]);
+            
+            // 4. Hotovo -> Refresh a přesměrování
+            await loadTrips();
+            setIsModalOpen(false);
+            setNewName("");
+            router.push(`/trip/${shareCode}?tab=settings`);
+        }
+    } catch (err: any) {
+        alert("Chyba při vytváření: " + err.message);
+    } finally {
+        setLoading(false);
+    }
   };
 
   const handleJoinTrip = async (e: React.FormEvent) => {
@@ -314,8 +241,6 @@ export default function TripenziApp() {
     }
     result.sort((a, b) => {
         if (sortBy === 'alphabet') return a.name.localeCompare(b.name);
-        if (a.pending && !b.pending) return -1;
-        if (!a.pending && b.pending) return 1;
         const dateA = new Date(a.start_date || 0).getTime();
         const dateB = new Date(b.start_date || 0).getTime();
         return dateB - dateA;
@@ -352,7 +277,6 @@ export default function TripenziApp() {
               <Logo size="normal" variant="full" />
               <div className="flex items-center gap-2 mt-1 pl-1">
                 <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Vítej, {currentUser.name}</p>
-                <button onClick={() => syncPendingTrips(currentUser, true)} disabled={isSyncing || !isOnline} className={`flex items-center gap-1 text-[10px] font-black uppercase px-2 py-1 rounded-md transition-all active:scale-95 ${isSyncing ? 'bg-indigo-100 text-indigo-600 animate-pulse' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{isSyncing ? <CloudUploadIcon /> : <RefreshIcon />}{isSyncing ? 'Sync...' : 'Sync'}</button>
                 <div className={`flex items-center gap-1 text-[10px] font-black uppercase px-1.5 py-0.5 rounded-md ${isOnline ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-orange-600'}`}>{isOnline ? <WifiIcon /> : <WifiOffIcon />}{isOnline ? 'Online' : 'Offline'}</div>
               </div>
           </div>
@@ -378,14 +302,11 @@ export default function TripenziApp() {
           const currency = trip.base_currency || "CZK";
           const isOwner = trip.owner_id === currentUser.custom_id;
           const status = getCountdownStatus(trip.start_date, trip.end_date);
-          const isPending = trip.pending; 
           return (
-          <Link href={`/trip/${trip.share_code}`} key={trip.id} className={`${cardStyle} ${isPending ? 'opacity-80' : ''}`}>
+          <Link href={`/trip/${trip.share_code}`} key={trip.id} className={cardStyle}>
               <div className={`h-40 rounded-[1.5rem] mb-5 relative overflow-hidden ${!trip.cover_image ? `bg-gradient-to-br ${trip.color}` : ''}`} style={trip.cover_image ? { backgroundImage: `url(${trip.cover_image})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}>
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
-                  {isPending && (<div className="absolute top-3 left-3 px-2 py-1 bg-white/90 text-slate-900 rounded-lg text-[10px] font-black uppercase shadow-md flex items-center gap-1"><CloudUploadIcon /> Čeká na sync</div>)}
-                  {trip.syncError && (<div className="absolute bottom-3 left-3 px-2 py-1 bg-rose-500 text-white rounded-lg text-[10px] font-bold shadow-md">⚠️ {trip.syncError}</div>)}
-                  {status && !isPending && (<div className={`absolute top-3 right-3 px-2 py-1 rounded-lg text-[10px] font-black uppercase shadow-sm border transform rotate-2 ${status.style}`}>{status.text}</div>)}
+                  {status && (<div className={`absolute top-3 right-3 px-2 py-1 rounded-lg text-[10px] font-black uppercase shadow-sm border transform rotate-2 ${status.style}`}>{status.text}</div>)}
                   <div className="absolute bottom-4 left-4 right-4 flex justify-between items-end"><div className="bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-lg text-white text-xs font-bold border border-white/20 shadow-sm flex items-center gap-2"><CalendarIcon /> {formatDateRange(trip.start_date, trip.end_date, trip.date)}</div></div>
               </div>
               <div className="px-1">
