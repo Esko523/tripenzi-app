@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabaseClient';
 import Logo from '@/components/Logo';
 import LoginView from '@/components/LoginView';
 
-const APP_VERSION = "1.0.5 - Fixed Loading"; 
+const APP_VERSION = "1.0.7 - Safe Sync"; 
 
 // --- IKONY ---
 const PlusIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>;
@@ -49,9 +49,16 @@ export default function TripenziApp() {
   
   const isSyncingRef = useRef(false);
 
-  // --- SAFE RESET FUNCTION ---
+  // --- ZÁCHRANNÁ BRZDA (KILL SWITCH) ---
+  useEffect(() => {
+    const timer = setTimeout(() => {
+        setLoading(false);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, []);
+
   const handleHardReset = () => {
-      if(confirm("Opravdu vymazat data aplikace z telefonu? (Data na serveru zůstanou)")) {
+      if(confirm("Opravdu vymazat data aplikace z telefonu?")) {
           localStorage.clear();
           if ('serviceWorker' in navigator) {
               navigator.serviceWorker.getRegistrations().then(function(registrations) {
@@ -62,6 +69,8 @@ export default function TripenziApp() {
       }
   };
 
+  // --- SAFE SYNC ---
+  // Jen odesílá, ale NEMAŽE z pending listu. Úklid dělá až loadTrips.
   const syncPendingTrips = async (user: User, manual = false) => {
     if (isSyncingRef.current) return;
     
@@ -70,8 +79,8 @@ export default function TripenziApp() {
     
     if (!pendingTripsStr || JSON.parse(pendingTripsStr).length === 0) {
         if(manual) {
+            alert("Vše je aktuální! Obnovuji data...");
             await loadTrips();
-            alert("Vše je aktuální! Data obnovena.");
         }
         return;
     }
@@ -80,84 +89,44 @@ export default function TripenziApp() {
     
     isSyncingRef.current = true;
     setIsSyncing(true);
-    console.log("🚀 Spouštím synchronizaci...");
 
-    const newPendingList: Trip[] = [];
     let somethingChanged = false;
-    let successCount = 0;
 
     for (const trip of pendingTrips) {
         try {
-            console.log(`Sync trip: ${trip.name} (${trip.share_code})`);
-            
-            // 1. Check existence
-            const { data: existingTrip } = await supabase
-                .from('trips')
-                .select('id')
-                .eq('share_code', trip.share_code)
-                .maybeSingle();
-
+            // 1. Check
+            const { data: existingTrip } = await supabase.from('trips').select('id').eq('share_code', trip.share_code).maybeSingle();
             let finalTripId = existingTrip?.id;
 
-            // 2. Insert if new
+            // 2. Insert
             if (!existingTrip) {
-                const { data: newTripData, error: insertError } = await supabase.from('trips').insert([{ 
-                    name: trip.name, 
-                    color: trip.color, 
-                    owner_id: user.custom_id, 
-                    base_currency: 'CZK', 
-                    total_budget: 0, 
-                    share_code: trip.share_code 
-                }]).select().single();
-
-                if (insertError) throw insertError;
-                finalTripId = newTripData.id;
+                const { data: newTripData, error: insertError } = await supabase.from('trips').insert([{ name: trip.name, color: trip.color, owner_id: user.custom_id, base_currency: 'CZK', total_budget: 0, share_code: trip.share_code }]).select().single();
+                if (insertError && insertError.code !== '23505') throw insertError;
+                if (newTripData) finalTripId = newTripData.id;
             }
 
-            // 3. Link user
-            if (finalTripId) {
-                await supabase.from('trip_members').upsert(
-                    { trip_id: finalTripId, user_id: user.custom_id }, 
-                    { onConflict: 'trip_id,user_id' }
-                );
+            // 3. Link
+            if (finalTripId || existingTrip?.id) {
+                const targetId = finalTripId || existingTrip?.id;
+                await supabase.from('trip_members').upsert({ trip_id: targetId, user_id: user.custom_id }, { onConflict: 'trip_id,user_id' });
                 
-                // Check if participant exists to avoid duplicate name error
-                const { data: existingPart } = await supabase.from('participants')
-                    .select('id')
-                    .eq('trip_id', finalTripId)
-                    .eq('name', user.name)
-                    .maybeSingle();
-                
-                if (!existingPart) {
-                    await supabase.from('participants').insert([{ trip_id: finalTripId, name: user.name }]);
-                }
+                const { data: existingPart } = await supabase.from('participants').select('id').eq('trip_id', targetId).eq('name', user.name).maybeSingle();
+                if (!existingPart) await supabase.from('participants').insert([{ trip_id: targetId, name: user.name }]);
                 
                 somethingChanged = true;
-                successCount++;
             }
-
-        } catch (e: any) {
+        } catch (e) {
             console.error("Sync error:", e);
-            newPendingList.push({ ...trip, syncError: "Chyba při odesílání" });
         }
     }
 
-    if (newPendingList.length > 0) {
-        localStorage.setItem(pendingKey, JSON.stringify(newPendingList));
-    } else {
-        localStorage.removeItem(pendingKey);
-    }
-
+    // POZOR: Zde NEMAŽEME pending items. To udělá až loadTrips, až si ověří, že tam jsou.
+    
     isSyncingRef.current = false;
     setIsSyncing(false);
 
     if (somethingChanged) {
-        if(manual || successCount > 0) {
-            // alert(`🎉 Hotovo! Synchronizováno ${successCount} tripů.`);
-        }
-        await loadTrips();
-    } else if (newPendingList.length > 0 && manual) {
-        alert("⚠️ Některé tripy se nepodařilo odeslat. Zkus to později.");
+        await loadTrips(); // Toto zavolá úklidovou četu
     }
   };
 
@@ -167,7 +136,7 @@ export default function TripenziApp() {
     const cacheKey = `trips_cache_${currentUser.custom_id}`;
     const pendingKey = `pending_trips_${currentUser.custom_id}`;
     
-    // 1. Local Data
+    // 1. Načíst lokální data
     const cachedTripsStr = localStorage.getItem(cacheKey);
     let allTrips: Trip[] = cachedTripsStr ? JSON.parse(cachedTripsStr) : [];
     
@@ -180,24 +149,21 @@ export default function TripenziApp() {
     }
 
     setTrips(allTrips);
-    // Pokud máme data z cache, vypneme loading hned, ať uživatel nečeká
     if (allTrips.length > 0) setLoading(false);
 
-    // 2. Online Check
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
         setIsOnline(false);
-        setLoading(false); // DŮLEŽITÉ!
+        setLoading(false); 
         return; 
     }
 
-    // 3. Server Data
     try {
         const { data: memberData } = await supabase.from('trip_members').select('trip_id').eq('user_id', currentUser.custom_id);
         
         if (!memberData || memberData.length === 0) { 
             const justPending = allTrips.filter(t => t.pending);
             setTrips(justPending);
-            localStorage.removeItem(cacheKey);
+            // Pokud server říká prázdno, nemažeme cache, pokud máme pending!
             return; 
         }
         
@@ -214,15 +180,21 @@ export default function TripenziApp() {
                 return { ...trip, spent: Math.round(spent) };
             }));
             
+            // --- ZDE PROBÍHÁ ÚKLID (CLEANUP) ---
+            // Podíváme se, které tripy z "pending" nám server vrátil.
             const currentPendingStr = localStorage.getItem(pendingKey);
             let finalTrips = tripsWithSpent;
+            
             if (currentPendingStr) {
                  const currentPending: Trip[] = JSON.parse(currentPendingStr);
                  const serverCodes = new Set(tripsWithSpent.map(t => t.share_code));
+                 
+                 // Zůstávají jen ty pending, které server JEŠTĚ NEVRÁTIL
                  const stillPending = currentPending.filter(t => !serverCodes.has(t.share_code));
                  
                  finalTrips = [...stillPending, ...tripsWithSpent];
                  
+                 // Pokud jsme nějaké pending tripy našli na serveru, odstraníme je z pending storage
                  if (stillPending.length < currentPending.length) {
                      if (stillPending.length === 0) localStorage.removeItem(pendingKey);
                      else localStorage.setItem(pendingKey, JSON.stringify(stillPending));
@@ -235,7 +207,6 @@ export default function TripenziApp() {
     } catch (e) {
         console.log("Load error");
     } finally {
-        // TOTO TADY CHYBĚLO! Ať se stane cokoliv (úspěch nebo chyba), přestaň se točit.
         setLoading(false);
     }
   }, [currentUser]);
@@ -248,7 +219,6 @@ export default function TripenziApp() {
         setCurrentUser(user);
         setEditUserName(user.name);
         setEditUserAvatar(user.avatar || "👤");
-        
         if (typeof navigator !== 'undefined') {
             setIsOnline(navigator.onLine);
             if (navigator.onLine) syncPendingTrips(user);
@@ -259,17 +229,13 @@ export default function TripenziApp() {
 
     const handleOnline = () => { setIsOnline(true); if(currentUser) syncPendingTrips(currentUser); };
     const handleOffline = () => setIsOnline(false);
-
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-
-    // Timeout záchrana - kdyby se loading zasekl, po 3s ho vypni
-    const safetyTimeout = setTimeout(() => setLoading(false), 3000);
-
+    const timer = setTimeout(() => setLoading(false), 2000);
     return () => {
         window.removeEventListener('online', handleOnline);
         window.removeEventListener('offline', handleOffline);
-        clearTimeout(safetyTimeout);
+        clearTimeout(timer);
     };
   }, [currentUser]);
 
@@ -290,13 +256,8 @@ export default function TripenziApp() {
     const now = new Date();
     const startDate = new Date(start);
     const endDate = end ? new Date(end) : null;
-
-    if (endDate && now > endDate) {
-      return { text: "Proběhlo", style: "bg-slate-200 text-slate-600 border-slate-300" };
-    }
-    if (now < startDate) {
-      return { text: "Nadcházející", style: "bg-blue-200 text-blue-600 border-blue-300" };
-    }
+    if (endDate && now > endDate) return { text: "Proběhlo", style: "bg-slate-200 text-slate-600 border-slate-300" };
+    if (now < startDate) return { text: "Nadcházející", style: "bg-blue-200 text-blue-600 border-blue-300" };
     return { text: "Probíhá", style: "bg-emerald-200 text-emerald-600 border-emerald-300" };
   };
 
@@ -308,11 +269,7 @@ export default function TripenziApp() {
       syncPendingTrips(user);
   };
   
-  const handleLogout = () => { 
-      setCurrentUser(null); 
-      setTrips([]); 
-      localStorage.removeItem("tripenzi_session"); 
-  };
+  const handleLogout = () => { setCurrentUser(null); setTrips([]); localStorage.removeItem("tripenzi_session"); };
 
   const handleUpdateProfile = async () => { if(!currentUser) return; const { error } = await supabase.from('users').update({ name: editUserName, avatar: editUserAvatar }).eq('id', currentUser.id); if(!error) { const updatedUser = { ...currentUser, name: editUserName, avatar: editUserAvatar }; loginUser(updatedUser); setIsProfileOpen(false); }};
   const generateShareCode = () => { const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"; let result = ""; for (let i = 0; i < 6; i++) { if (i === 3) result += "-"; result += chars.charAt(Math.floor(Math.random() * chars.length)); } return result; };
@@ -320,35 +277,15 @@ export default function TripenziApp() {
   const handleAddTrip = async (e: React.FormEvent) => {
     e.preventDefault(); 
     if (!newName || !currentUser) return;
-
     const randomColor = ["from-blue-500 to-cyan-400", "from-purple-500 to-indigo-500", "from-green-400 to-emerald-500", "from-yellow-400 to-orange-500", "from-pink-500 to-rose-500"][Math.floor(Math.random() * 4)];
     const shareCode = generateShareCode();
-    
-    const newTrip: Trip = {
-        id: Math.floor(Math.random() * 1000000),
-        name: newName,
-        color: randomColor,
-        owner_id: currentUser.custom_id,
-        base_currency: 'CZK',
-        total_budget: 0,
-        share_code: shareCode,
-        spent: 0,
-        pending: true,
-        start_date: new Date().toISOString()
-    };
-
-    setTrips(prev => [newTrip, ...prev]);
-    setIsModalOpen(false);
-    setNewName("");
-
+    const newTrip: Trip = { id: Math.floor(Math.random() * 1000000), name: newName, color: randomColor, owner_id: currentUser.custom_id, base_currency: 'CZK', total_budget: 0, share_code: shareCode, spent: 0, pending: true, start_date: new Date().toISOString() };
+    setTrips(prev => [newTrip, ...prev]); setIsModalOpen(false); setNewName("");
     const pendingKey = `pending_trips_${currentUser.custom_id}`;
     const currentPending = JSON.parse(localStorage.getItem(pendingKey) || "[]");
     currentPending.push(newTrip);
     localStorage.setItem(pendingKey, JSON.stringify(currentPending));
-
-    if (navigator.onLine) {
-        syncPendingTrips(currentUser);
-    }
+    if (navigator.onLine) syncPendingTrips(currentUser);
   };
 
   const handleJoinTrip = async (e: React.FormEvent) => {
@@ -363,15 +300,11 @@ export default function TripenziApp() {
 
   const filteredAndSortedTrips = useMemo(() => {
     let result = [...trips];
-    const now = new Date();
-
     if (filter !== 'all') {
       result = result.filter(trip => {
         const start = new Date(trip.start_date || '');
         const end = trip.end_date ? new Date(trip.end_date) : (start.getTime() ? new Date(start) : new Date());
-        end.setHours(23, 59, 59);
-        if (start.getTime()) start.setHours(0, 0, 0);
-
+        end.setHours(23, 59, 59); if (start.getTime()) start.setHours(0, 0, 0);
         const status = getCountdownStatus(trip.start_date, trip.end_date);
         if (filter === 'future') return status?.text === "Nadcházející";
         if (filter === 'active') return status?.text === "Probíhá";
@@ -379,7 +312,6 @@ export default function TripenziApp() {
         return true;
       });
     }
-
     result.sort((a, b) => {
         if (sortBy === 'alphabet') return a.name.localeCompare(b.name);
         if (a.pending && !b.pending) return -1;
@@ -388,7 +320,6 @@ export default function TripenziApp() {
         const dateB = new Date(b.start_date || 0).getTime();
         return dateB - dateA;
     });
-
     return result;
   }, [trips, filter, sortBy]);
 
@@ -411,31 +342,18 @@ export default function TripenziApp() {
     </div>
   );
 
-  if (!currentUser) {
-    return <LoginView onLogin={loginUser} />;
-  }
+  if (!currentUser) return <LoginView onLogin={loginUser} />;
 
   return (
     <div className="min-h-screen pb-32 font-sans relative bg-slate-50">
-      
       <header className="bg-white border-b border-slate-100">
         <div className="pt-6 pb-2 px-6 flex justify-between items-center">
           <div>
               <Logo size="normal" variant="full" />
               <div className="flex items-center gap-2 mt-1 pl-1">
                 <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Vítej, {currentUser.name}</p>
-                <button 
-                    onClick={() => syncPendingTrips(currentUser, true)} 
-                    disabled={isSyncing || !isOnline}
-                    className={`flex items-center gap-1 text-[10px] font-black uppercase px-2 py-1 rounded-md transition-all active:scale-95 ${isSyncing ? 'bg-indigo-100 text-indigo-600 animate-pulse' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-                >
-                    {isSyncing ? <CloudUploadIcon /> : <RefreshIcon />}
-                    {isSyncing ? 'Sync...' : 'Sync'}
-                </button>
-                <div className={`flex items-center gap-1 text-[10px] font-black uppercase px-1.5 py-0.5 rounded-md ${isOnline ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-orange-600'}`}>
-                    {isOnline ? <WifiIcon /> : <WifiOffIcon />}
-                    {isOnline ? 'Online' : 'Offline'}
-                </div>
+                <button onClick={() => syncPendingTrips(currentUser, true)} disabled={isSyncing || !isOnline} className={`flex items-center gap-1 text-[10px] font-black uppercase px-2 py-1 rounded-md transition-all active:scale-95 ${isSyncing ? 'bg-indigo-100 text-indigo-600 animate-pulse' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{isSyncing ? <CloudUploadIcon /> : <RefreshIcon />}{isSyncing ? 'Sync...' : 'Sync'}</button>
+                <div className={`flex items-center gap-1 text-[10px] font-black uppercase px-1.5 py-0.5 rounded-md ${isOnline ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-orange-600'}`}>{isOnline ? <WifiIcon /> : <WifiOffIcon />}{isOnline ? 'Online' : 'Offline'}</div>
               </div>
           </div>
           <div className="flex items-center gap-3">
@@ -443,7 +361,6 @@ export default function TripenziApp() {
              <button onClick={() => setIsProfileOpen(true)} className="w-11 h-11 rounded-full bg-slate-100 border border-slate-200 shadow-sm flex items-center justify-center text-2xl hover:bg-slate-200 transition-transform active:scale-95">{currentUser.avatar || "👤"}</button>
           </div>
         </div>
-
         <div className="px-6 pb-4 pt-2 flex items-center justify-between gap-3">
             <div className="flex gap-2 overflow-x-auto pb-2 pt-1 no-scrollbar flex-1 mask-linear-fade" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                 <button onClick={() => setFilter('all')} className={`${filterBtnBase} ${filter === 'all' ? filterBtnActive : filterBtnInactive}`}>Vše</button>
@@ -451,14 +368,7 @@ export default function TripenziApp() {
                 <button onClick={() => setFilter('active')} className={`${filterBtnBase} ${filter === 'active' ? filterBtnActive : filterBtnInactive}`}>Probíhající</button>
                 <button onClick={() => setFilter('past')} className={`${filterBtnBase} ${filter === 'past' ? filterBtnActive : filterBtnInactive}`}>Proběhlé</button>
             </div>
-            
-            <button 
-                onClick={() => setSortBy(prev => prev === 'date' ? 'alphabet' : 'date')} 
-                className="w-11 h-11 flex items-center justify-center bg-white rounded-full shadow-sm border border-slate-200 text-slate-500 hover:text-indigo-600 transition-colors flex-shrink-0 active:scale-90"
-                title={`Řadit: ${sortBy === 'date' ? 'Podle data' : 'Abecedně'}`}
-            >
-                {sortBy === 'date' ? <SortIcon /> : <span className="text-xs font-black">A-Z</span>}
-            </button>
+            <button onClick={() => setSortBy(prev => prev === 'date' ? 'alphabet' : 'date')} className="w-11 h-11 flex items-center justify-center bg-white rounded-full shadow-sm border border-slate-200 text-slate-500 hover:text-indigo-600 transition-colors flex-shrink-0 active:scale-90" title={`Řadit: ${sortBy === 'date' ? 'Podle data' : 'Abecedně'}`}>{sortBy === 'date' ? <SortIcon /> : <span className="text-xs font-black">A-Z</span>}</button>
         </div>
       </header>
       
@@ -469,36 +379,15 @@ export default function TripenziApp() {
           const isOwner = trip.owner_id === currentUser.custom_id;
           const status = getCountdownStatus(trip.start_date, trip.end_date);
           const isPending = trip.pending; 
-          
           return (
           <Link href={`/trip/${trip.share_code}`} key={trip.id} className={`${cardStyle} ${isPending ? 'opacity-80' : ''}`}>
               <div className={`h-40 rounded-[1.5rem] mb-5 relative overflow-hidden ${!trip.cover_image ? `bg-gradient-to-br ${trip.color}` : ''}`} style={trip.cover_image ? { backgroundImage: `url(${trip.cover_image})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}>
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
-                  
-                  {isPending && (
-                       <div className="absolute top-3 left-3 px-2 py-1 bg-white/90 text-slate-900 rounded-lg text-[10px] font-black uppercase shadow-md flex items-center gap-1">
-                           <CloudUploadIcon /> Čeká na sync
-                       </div>
-                  )}
-                  {trip.syncError && (
-                       <div className="absolute bottom-3 left-3 px-2 py-1 bg-rose-500 text-white rounded-lg text-[10px] font-bold shadow-md">
-                           ⚠️ {trip.syncError}
-                       </div>
-                  )}
-
-                  {status && !isPending && (
-                    <div className={`absolute top-3 right-3 px-2 py-1 rounded-lg text-[10px] font-black uppercase shadow-sm border transform rotate-2 ${status.style}`}>
-                        {status.text}
-                    </div>
-                  )}
-
-                  <div className="absolute bottom-4 left-4 right-4 flex justify-between items-end">
-                      <div className="bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-lg text-white text-xs font-bold border border-white/20 shadow-sm flex items-center gap-2">
-                          <CalendarIcon /> {formatDateRange(trip.start_date, trip.end_date, trip.date)}
-                      </div>
-                  </div>
+                  {isPending && (<div className="absolute top-3 left-3 px-2 py-1 bg-white/90 text-slate-900 rounded-lg text-[10px] font-black uppercase shadow-md flex items-center gap-1"><CloudUploadIcon /> Čeká na sync</div>)}
+                  {trip.syncError && (<div className="absolute bottom-3 left-3 px-2 py-1 bg-rose-500 text-white rounded-lg text-[10px] font-bold shadow-md">⚠️ {trip.syncError}</div>)}
+                  {status && !isPending && (<div className={`absolute top-3 right-3 px-2 py-1 rounded-lg text-[10px] font-black uppercase shadow-sm border transform rotate-2 ${status.style}`}>{status.text}</div>)}
+                  <div className="absolute bottom-4 left-4 right-4 flex justify-between items-end"><div className="bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-lg text-white text-xs font-bold border border-white/20 shadow-sm flex items-center gap-2"><CalendarIcon /> {formatDateRange(trip.start_date, trip.end_date, trip.date)}</div></div>
               </div>
-              
               <div className="px-1">
                   <div className="flex justify-between items-start mb-3">
                       <h3 className="text-xl font-bold text-slate-900 leading-tight">{trip.name}</h3>
@@ -551,7 +440,6 @@ export default function TripenziApp() {
                 <button onClick={handleUpdateProfile} className={btnPrimary}>Uložit změny</button>
                 <button onClick={handleLogout} className="w-full py-3 text-rose-500 font-bold hover:bg-rose-50 rounded-xl transition flex items-center justify-center gap-2"><LogOutIcon /> Odhlásit se</button>
                 
-                {/* ZDE JE NOVÉ TLAČÍTKO PRO RESET */}
                 <button onClick={handleHardReset} className="w-full py-3 mt-4 bg-red-50 text-red-600 font-bold rounded-xl flex items-center justify-center gap-2 text-xs uppercase tracking-wider hover:bg-red-100">
                     <TrashIcon /> ⚠️ Resetovat aplikaci
                 </button>
