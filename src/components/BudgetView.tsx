@@ -14,6 +14,8 @@ const ChevronDown = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" hei
 const RefreshIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>;
 const ShareIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/></svg>;
 
+const PlusIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>;
+
 const FoodIcon = () => <span>🍔</span>;
 const DrinkIcon = () => <span>🍺</span>;
 const TransportIcon = () => <span>🚕</span>;
@@ -186,13 +188,19 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
   const goToStep2 = () => { const res = calculateResult(); if (res > 0) { setDisplayValue(String(res)); setStep(2); } };
   
   const handleSubmit = () => {
-    let finalSplitDetails = splitValues;
     const finalAmount = calculateResult();
+    let payloadForWhom: string[] | undefined = undefined;
+    let finalSplitDetails: Record<string, number> | undefined = undefined;
 
     if (isSettlement) {
         finalSplitDetails = {};
-        activeParticipants.forEach(p => finalSplitDetails[p] = 0);
+        activeParticipants.forEach(p => finalSplitDetails![p] = 0);
         finalSplitDetails[settleReceiver] = finalAmount;
+    } else if (splitMethod === 'equal') {
+        const targets = selectedEqual.length > 0 ? selectedEqual : activeParticipants;
+        payloadForWhom = targets;
+    } else {
+        finalSplitDetails = splitValues;
     }
 
     onAddExpense({ 
@@ -204,6 +212,7 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
         category: isSettlement ? 'settlement' : category, 
         splitMethod: isSettlement ? 'exact' : splitMethod, 
         splitDetails: finalSplitDetails, 
+        forWhom: payloadForWhom,
         isSettlement 
     });
     setIsWizardOpen(false); setIsSettlement(false); setStep(1); setDisplayValue("0"); setTitle("");
@@ -339,8 +348,8 @@ export default function BudgetView({ expenses = [], participants = [], baseCurre
                 </div>
             )}
 
-            <button onClick={() => { setIsWizardOpen(true); setIsSettlement(false); setStep(1); setDisplayValue("0"); setTitle(""); }} className="fixed bottom-8 right-6 w-16 h-16 bg-black text-white rounded-full shadow-2xl flex items-center justify-center text-3xl active:scale-90 transition z-40 hover:bg-gray-800 border-2 border-white">
-                <span className="mb-1">+</span>
+            <button onClick={() => { setIsWizardOpen(true); setIsSettlement(false); setStep(1); setDisplayValue("0"); setTitle(""); }} className="fixed bottom-8 right-6 w-16 h-16 bg-slate-900 text-white rounded-full shadow-2xl flex items-center justify-center text-3xl active:scale-90 transition z-40 hover:bg-slate-800 border-2 border-white">
+                <PlusIcon />
             </button>
         </>
       )}
