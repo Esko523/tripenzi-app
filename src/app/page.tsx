@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabaseClient';
 import Logo from '@/components/Logo';
 import LoginView from '@/components/LoginView';
 
-const APP_VERSION = "1.2.2"; // Zde je verze aplikace
+const APP_VERSION = "1.2.3"; // Aktualizovaná verze
 
 // --- IKONY ---
 const PlusIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>;
@@ -40,6 +40,9 @@ export default function TripenziApp() {
   const [joinCode, setJoinCode] = useState("");
   const [loading, setLoading] = useState(true);
   
+  // NOVÉ: Stav pro indikaci zakládání (aby nezmizela celá apka)
+  const [isCreating, setIsCreating] = useState(false);
+  
   const [editUserName, setEditUserName] = useState("");
   const [editUserAvatar, setEditUserAvatar] = useState("👤");
   const [isOnline, setIsOnline] = useState(true);
@@ -50,7 +53,7 @@ export default function TripenziApp() {
 
     const cacheKey = `trips_cache_${currentUser.custom_id}`;
     
-    // 1. Offline Read
+    // 1. Offline Read (Local First) - Zobrazíme data okamžitě
     const cachedTripsStr = localStorage.getItem(cacheKey);
     if (cachedTripsStr) {
         setTrips(JSON.parse(cachedTripsStr));
@@ -64,7 +67,7 @@ export default function TripenziApp() {
         return; 
     }
 
-    // 3. Online Fetch
+    // 3. Online Fetch (Sync na pozadí)
     try {
         const { data: memberData } = await supabase.from('trip_members').select('trip_id').eq('user_id', currentUser.custom_id);
         
@@ -91,7 +94,7 @@ export default function TripenziApp() {
             localStorage.setItem(cacheKey, JSON.stringify(tripsWithSpent));
         }
     } catch (e) {
-        console.log("Offline mode.");
+        console.log("Offline mode or sync error.");
     } finally {
         setLoading(false);
     }
@@ -121,10 +124,8 @@ export default function TripenziApp() {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Pojistka proti zaseknutí
     const timer = setTimeout(() => setLoading(false), 2000);
 
-    // Realtime aktualizace
     const channel = supabase
         .channel('home_updates')
         .on('postgres_changes', { 
@@ -188,17 +189,20 @@ export default function TripenziApp() {
   const handleUpdateProfile = async () => { if(!currentUser) return; const { error } = await supabase.from('users').update({ name: editUserName, avatar: editUserAvatar }).eq('id', currentUser.id); if(!error) { const updatedUser = { ...currentUser, name: editUserName, avatar: editUserAvatar }; loginUser(updatedUser); setIsProfileOpen(false); }};
   const generateShareCode = () => { const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"; let result = ""; for (let i = 0; i < 6; i++) { if (i === 3) result += "-"; result += chars.charAt(Math.floor(Math.random() * chars.length)); } return result; };
 
-  // --- ONLINE CREATE TRIP ---
+  // --- ONLINE CREATE TRIP (S ochranou proti duplicitám) ---
   const handleAddTrip = async (e: React.FormEvent) => {
     e.preventDefault(); 
-    if (!newName || !currentUser) return;
+    
+    // 1. Zabraň odeslání, pokud se už odesílá (isCreating) nebo nejsou data
+    if (!newName || !currentUser || isCreating) return;
 
+    // 2. Kontrola, zda jsme online (Write-Online)
     if (!navigator.onLine) {
         alert("Pro vytvoření nového tripu musíš být online! 🌐\n\n(Prohlížení starých tripů funguje i offline)");
         return;
     }
 
-    setLoading(true);
+    setIsCreating(true); // Zamknout formulář
 
     const randomColor = ["from-blue-500 to-cyan-400", "from-purple-500 to-indigo-500", "from-green-400 to-emerald-500", "from-yellow-400 to-orange-500", "from-pink-500 to-rose-500"][Math.floor(Math.random() * 4)];
     const shareCode = generateShareCode();
@@ -219,15 +223,23 @@ export default function TripenziApp() {
             await supabase.from('trip_members').insert([{ trip_id: tripData.id, user_id: currentUser.custom_id }]);
             await supabase.from('participants').insert([{ trip_id: tripData.id, name: currentUser.name }]);
             
-            await loadTrips();
+            // 3. Local-First aktualizace (okamžitá odezva bez čekání na loadTrips)
+            const newTripObj = { ...tripData, spent: 0 };
+            const updatedTrips = [newTripObj, ...trips];
+            
+            setTrips(updatedTrips);
+            localStorage.setItem(`trips_cache_${currentUser.custom_id}`, JSON.stringify(updatedTrips));
+            
             setIsModalOpen(false);
             setNewName("");
+            
+            // Přesměrování
             router.push(`/trip/${shareCode}?tab=settings`);
         }
     } catch (err: any) {
         alert("Chyba při vytváření: " + err.message);
     } finally {
-        setLoading(false);
+        setIsCreating(false); // Odemknout formulář
     }
   };
 
@@ -266,9 +278,9 @@ export default function TripenziApp() {
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><div className="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-indigo-600"></div></div>;
 
-  const inputStyle = "w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 font-medium text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all placeholder-slate-400";
+  const inputStyle = "w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 font-medium text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all placeholder-slate-400 disabled:opacity-50 disabled:cursor-not-allowed";
   const btnPrimary = "w-full py-4 rounded-2xl font-bold text-lg shadow-xl shadow-slate-200 bg-slate-900 text-white hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2";
-  const btnAction = "w-full py-3 rounded-xl font-bold bg-indigo-600 text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-transform flex items-center justify-center";
+  const btnAction = "w-full py-3 rounded-xl font-bold bg-indigo-600 text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-transform flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed";
   const cardStyle = "block bg-white rounded-[2rem] p-5 shadow-sm border border-slate-100 relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-xl group mb-4 active:scale-[0.98]";
   const filterBtnBase = "px-4 py-2.5 rounded-full text-sm font-bold transition-all border flex-shrink-0 active:scale-95";
   const filterBtnActive = "bg-slate-900 text-white border-slate-900 shadow-md";
@@ -351,16 +363,64 @@ export default function TripenziApp() {
       </div>
 
       <div className="fixed bottom-8 right-6 flex flex-col gap-4 items-center z-40">
+        {/* Tlačítko pro připojení */}
         <button onClick={() => setIsJoinModalOpen(true)} className="w-14 h-14 bg-white text-indigo-600 border border-indigo-100 rounded-full shadow-xl shadow-indigo-100 flex items-center justify-center transition-transform active:scale-90 hover:scale-105"><LinkIcon /></button>
-        <button onClick={() => setIsModalOpen(true)} className="w-16 h-16 bg-slate-900 text-white rounded-full shadow-2xl shadow-slate-400 flex items-center justify-center transition-transform active:scale-90 hover:scale-105"><PlusIcon /></button>
+        
+        {/* Tlačítko pro nový trip - VYPÍNANÉ OFFLINE */}
+        <button 
+            onClick={() => {
+                if(isOnline) setIsModalOpen(true);
+                else alert("Jsi offline. Trip můžeš založit, až se připojíš.");
+            }} 
+            disabled={!isOnline} 
+            className={`w-16 h-16 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300
+                ${isOnline 
+                    ? 'bg-slate-900 text-white shadow-slate-400 active:scale-90 hover:scale-105' 
+                    : 'bg-slate-300 text-slate-500 cursor-not-allowed opacity-80 grayscale' 
+                }`}
+        >
+            {isOnline ? <PlusIcon /> : <WifiOffIcon />}
+        </button>
       </div>
 
       {isModalOpen && (
-        <ModalWrapper onClose={() => setIsModalOpen(false)}>
+        <ModalWrapper onClose={() => !isCreating && setIsModalOpen(false)}>
             <h2 className="text-xl font-bold text-slate-900 mb-6 text-center">Nový Trip</h2>
             <form onSubmit={handleAddTrip} className="space-y-4">
-                <div><label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider pl-1">Název cesty</label><input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Např. Paříž" className={inputStyle} autoFocus /></div>
-                <div className="pt-2 flex gap-3"><button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-2.5 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition text-sm">Zrušit</button><button type="submit" className={btnAction}>Vytvořit</button></div>
+                <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider pl-1">Název cesty</label>
+                    <input 
+                        type="text" 
+                        value={newName} 
+                        onChange={(e) => setNewName(e.target.value)} 
+                        placeholder="Např. Paříž" 
+                        className={inputStyle} 
+                        autoFocus 
+                        disabled={isCreating} 
+                    />
+                </div>
+                <div className="pt-2 flex gap-3">
+                    <button 
+                        type="button" 
+                        onClick={() => setIsModalOpen(false)} 
+                        className="flex-1 py-2.5 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition text-sm"
+                        disabled={isCreating}
+                    >
+                        Zrušit
+                    </button>
+                    <button 
+                        type="submit" 
+                        className={btnAction}
+                        disabled={isCreating}
+                    >
+                         {isCreating ? (
+                            <span className="flex items-center gap-2">
+                                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                                Zakládám...
+                            </span>
+                        ) : "Vytvořit"}
+                    </button>
+                </div>
             </form>
         </ModalWrapper>
       )}
@@ -387,8 +447,6 @@ export default function TripenziApp() {
                 <button onClick={handleHardReset} className="w-full py-3 mt-4 bg-red-50 text-red-600 font-bold rounded-xl flex items-center justify-center gap-2 text-xs uppercase tracking-wider hover:bg-red-100">
                     <TrashIcon /> Vymazat data aplikace
                 </button>
-                
-                {/* ZDE JE UKAZATEL VERZE */}
                 <p className="text-center text-xs text-slate-300 mt-2">Verze {APP_VERSION}</p>
             </div>
         </ModalWrapper>
