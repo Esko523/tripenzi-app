@@ -1,17 +1,25 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
+// 1. ZDE JE JEN SEO A PWA INFO
 export const metadata: Metadata = {
   title: "Tripenzi",
   description: "Cestovatelská aplikace",
   manifest: "/manifest.json",
-  viewport: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0",
-  themeColor: "#ffffff",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
     title: "Tripenzi",
   },
+};
+
+// 2. TOTO JE NOVÉ - MUSÍ BÝT ZVLÁŠŤ
+export const viewport: Viewport = {
+  themeColor: "#ffffff",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
 
 export default function RootLayout({
