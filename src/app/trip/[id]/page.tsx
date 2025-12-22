@@ -9,7 +9,6 @@ import PlanView from '@/components/PlanView';
 import InfoView from '@/components/InfoView';
 import WeatherWidget from '@/components/WeatherWidget';
 import { supabase } from '@/lib/supabaseClient';
-import Logo from '@/components/Logo';
 
 // --- HLAVNÍ IKONY ---
 const ArrowLeft = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>;
@@ -18,6 +17,7 @@ const ListIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height
 const WalletIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>;
 const InfoIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="16" y2="12"/><line x1="12" x2="12.01" y1="8" y2="8"/></svg>;
 const SettingsIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>;
+const CloudUploadIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg>;
 
 type Event = { id: number; time: string; title: string; location?: string; date?: string; color?: string; };
 type Participant = { id: number; name: string; };
@@ -40,6 +40,7 @@ type Trip = {
   shareCode?: string;
   mapLink?: string;
   weatherLocation?: string;
+  pending?: boolean; // Nový příznak
 };
 
 export default function TripDetail({ params }: { params: Promise<{ id: string }> }) {
@@ -95,40 +96,62 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
       return "🏁 Trip skončil";
   };
 
-  // --- UPRAVENÁ FUNKCE S OFFLINE PODPOROU ---
   const fetchTripData = useCallback(async () => {
-    // Unikátní klíč pro uložení tohoto konkrétního výletu
     const cacheKey = `trip_detail_${shareCodeParam}`;
 
-    // 1. ZKUSÍME NAČÍST Z CACHE (aby to naběhlo hned)
+    // 1. ZKUSÍME CACHE (Detail)
     const cachedData = localStorage.getItem(cacheKey);
     if (cachedData) {
-        console.log("⚡ Načítám detail tripu z cache...");
         setTrip(JSON.parse(cachedData));
         setLoading(false);
     }
 
     try {
-        // 2. ZKUSÍME STÁHNOUT ČERSTVÁ DATA (ONLINE)
+        // 2. ZKUSÍME ONLINE
         const { data: tripData, error: tripError } = await supabase.from('trips').select('*').eq('share_code', shareCodeParam).single();
         
-        // Pokud chyba a nemáme cache -> přesměrujeme pryč
-        // Pokud chyba ale MÁME cache -> zůstaneme (vyřešeno v catch bloku níže)
+        // 3. POKUD NENALEZENO NA SERVERU -> ZKUSÍME "PENDING" (Local-first)
         if (tripError || !tripData) { 
-            if (!cachedData) { // Jen pokud nemáme ani offline data
-                if (!isNaN(Number(shareCodeParam))) {
-                     const { data: oldTrip } = await supabase.from('trips').select('*').eq('id', shareCodeParam).single();
-                     if (oldTrip && oldTrip.share_code) { router.push(`/trip/${oldTrip.share_code}`); return; }
+            // Získáme uživatele (potřebujeme jeho ID pro klíč pending listu)
+            const sessionUser = localStorage.getItem("tripenzi_session");
+            if (sessionUser) {
+                const user = JSON.parse(sessionUser);
+                const pendingKey = `pending_trips_${user.custom_id}`;
+                const pendingListStr = localStorage.getItem(pendingKey);
+                
+                if (pendingListStr) {
+                    const pendingList = JSON.parse(pendingListStr);
+                    // Hledáme náš trip v pending seznamu
+                    const pendingTrip = pendingList.find((t: any) => t.share_code === shareCodeParam);
+                    
+                    if (pendingTrip) {
+                        console.log("🚀 Nalezen pending trip v lokální frontě! Otevírám...");
+                        // Sestavíme "falešný" detail objekt
+                        const fakeDetail: Trip = {
+                            ...pendingTrip,
+                            dateFormatted: formatDateRange(pendingTrip.start_date),
+                            events: [],
+                            expenses: [],
+                            participants: [{ id: 0, name: user.name }], // Přidáme alespoň vlastníka
+                            spent: 0,
+                            pending: true
+                        };
+                        setTrip(fakeDetail);
+                        setLoading(false);
+                        return; // Úspěch - zobrazujeme lokální verzi
+                    }
                 }
-                // Pokud to opravdu neexistuje a nemáme to v cache -> pryč
-                // Ale pozor: při offline erroru to spadne do catch, takže se redirect nestane, což chceme.
-                // router.push('/'); 
-                return;
-            } else {
-                throw new Error("Offline or Trip not found"); // Hodíme chybu, aby to spadlo do catch a nechalo cache
             }
+
+            // Pokud jsme nic nenašli ani v pending a nemáme cache -> chyba
+            if (!cachedData && !trip?.pending) {
+               // Zde můžeme nechat logiku pro redirect, ale pro jistotu zatím jen logujeme
+               console.log("Trip nenalezen nikde.");
+            }
+            return;
         }
 
+        // ... Zbytek funkce pro zpracování online dat (pokud se našly) ...
         const tripId = tripData.id;
         const { data: participantsData } = await supabase.from('participants').select('*').eq('trip_id', tripId);
         const { data: expensesData } = await supabase.from('expenses').select('*').eq('trip_id', tripId);
@@ -144,7 +167,6 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
             return sum + (item.amount * (item.exchangeRate || 1));
         }, 0);
 
-        // Sestavíme kompletní objekt
         const fullTripData = {
             id: tripData.id,
             name: tripData.name,
@@ -168,15 +190,10 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
         };
 
         setTrip(fullTripData);
-        
-        // 3. ULOŽÍME DO CACHE PRO PŘÍŠTĚ
-        console.log("💾 Ukládám detail tripu do cache");
         localStorage.setItem(cacheKey, JSON.stringify(fullTripData));
 
     } catch (err) {
-        console.log("⚠️ Jsem offline, zobrazuji data z cache.");
-        // Pokud máme cache, nic neděláme (zůstane zobrazena).
-        // Pokud cache nemáme, uživatel uvidí nekonečný loading (nebo můžeme přidat hlášku), ale nepřesměruje ho to pryč.
+        console.log("⚠️ Offline mód - zůstávám u cache");
     } finally {
         setLoading(false);
     }
@@ -184,7 +201,7 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
 
   useEffect(() => { fetchTripData(); }, [fetchTripData]);
 
-  // Realtime aktualizace (funguje jen online)
+  // Realtime
   useEffect(() => {
     if (!trip?.id) return;
     const channel = supabase
@@ -198,27 +215,53 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
     return () => { supabase.removeChannel(channel); };
   }, [trip?.id, fetchTripData]);
 
-  // --- CRUD funkce ---
-  const addParticipant = async (name: string) => { if (!trip) return; await supabase.from('participants').insert([{ trip_id: trip.id, name }]); fetchTripData(); };
-  const deleteParticipant = async (id: number) => { await supabase.from('participants').delete().eq('id', id); fetchTripData(); };
+  // CRUD funkce (přidáme kontrolu pending stavu)
+  const addParticipant = async (name: string) => { 
+      if (!trip) return; 
+      if (trip.pending) { alert("Vydrž, trip se musí nejdřív odeslat na server."); return; }
+      await supabase.from('participants').insert([{ trip_id: trip.id, name }]); fetchTripData(); 
+  };
+  const deleteParticipant = async (id: number) => { 
+      if (trip?.pending) return;
+      await supabase.from('participants').delete().eq('id', id); fetchTripData(); 
+  };
   
-  const addExpense = async (expenseData: Omit<Expense, "id">) => { if (!trip) return; const dbPayload = { trip_id: trip.id, title: expenseData.title, amount: expenseData.amount, currency: expenseData.currency, exchange_rate: expenseData.exchangeRate, payer: expenseData.payer, category: expenseData.category, split_method: expenseData.splitMethod, split_details: expenseData.splitDetails, for_whom: expenseData.forWhom, is_settlement: expenseData.isSettlement }; await supabase.from('expenses').insert([dbPayload]); fetchTripData(); };
-  const deleteExpense = async (id: number) => { await supabase.from('expenses').delete().eq('id', id); fetchTripData(); };
+  const addExpense = async (expenseData: Omit<Expense, "id">) => { 
+      if (!trip) return;
+      if (trip.pending) { alert("Vydrž, trip se musí nejdřív odeslat na server."); return; }
+      const dbPayload = { trip_id: trip.id, title: expenseData.title, amount: expenseData.amount, currency: expenseData.currency, exchange_rate: expenseData.exchangeRate, payer: expenseData.payer, category: expenseData.category, split_method: expenseData.splitMethod, split_details: expenseData.splitDetails, for_whom: expenseData.forWhom, is_settlement: expenseData.isSettlement }; await supabase.from('expenses').insert([dbPayload]); fetchTripData(); 
+  };
+  const deleteExpense = async (id: number) => { 
+      if (trip?.pending) return;
+      await supabase.from('expenses').delete().eq('id', id); fetchTripData(); 
+  };
   
-  const saveDetails = async (notes: string, photoLink: string) => { if(!trip) return; const { data } = await supabase.from('trip_details').select('id').eq('trip_id', trip.id).maybeSingle(); if (data) await supabase.from('trip_details').update({ notes, photo_link: photoLink }).eq('trip_id', trip.id); else await supabase.from('trip_details').insert([{ trip_id: trip.id, notes, photo_link: photoLink }]); };
+  const saveDetails = async (notes: string, photoLink: string) => { 
+      if(!trip || trip.pending) return; 
+      const { data } = await supabase.from('trip_details').select('id').eq('trip_id', trip.id).maybeSingle(); if (data) await supabase.from('trip_details').update({ notes, photo_link: photoLink }).eq('trip_id', trip.id); else await supabase.from('trip_details').insert([{ trip_id: trip.id, notes, photo_link: photoLink }]); 
+  };
   
-  const addEvent = async (event: { title: string, location: string, time: string, date: string, color: string }) => { if (!trip) return; await supabase.from('events').insert([{ trip_id: trip.id, ...event }]); fetchTripData(); };
-  const deleteEvent = async (id: number) => { await supabase.from('events').delete().eq('id', id); fetchTripData(); };
-  const editEvent = async (id: number, updatedData: { title: string, location: string, time: string, date: string, color: string }) => { await supabase.from('events').update(updatedData).eq('id', id); fetchTripData(); };
+  const addEvent = async (event: { title: string, location: string, time: string, date: string, color: string }) => { 
+      if (!trip || trip.pending) return; 
+      await supabase.from('events').insert([{ trip_id: trip.id, ...event }]); fetchTripData(); 
+  };
+  const deleteEvent = async (id: number) => { if (trip?.pending) return; await supabase.from('events').delete().eq('id', id); fetchTripData(); };
+  const editEvent = async (id: number, updatedData: any) => { if (trip?.pending) return; await supabase.from('events').update(updatedData).eq('id', id); fetchTripData(); };
 
   const handleUpdateTripFromSettings = async (updatedData: any) => {
-      if(!trip) return;
+      if(!trip || trip.pending) return;
       const { error } = await supabase.from('trips').update(updatedData).eq('id', trip.id);
       if (!error) { alert("Nastavení uloženo! ✅"); fetchTripData(); } else { alert("Chyba: " + error.message); }
   };
 
   const handleDeleteTripFromSettings = async () => {
       if(!trip) return;
+      if (trip.pending) {
+          // Pokud je pending, smažeme ho jen z fronty
+          // (To by chtělo logiku v localStorage, pro teď jen upozorníme)
+          alert("Tento trip ještě není synchronizovaný.");
+          return;
+      }
       if(confirm("Opravdu smazat celý trip? Tato akce je nevratná.")) {
           const { error } = await supabase.from('trips').delete().eq('id', trip.id);
           if(!error) router.push('/');
@@ -227,7 +270,7 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
   };
 
   const handleColorChange = async (newColor: string) => {
-      if(!trip) return;
+      if(!trip || trip.pending) return;
       setTrip(prev => prev ? { ...prev, color: newColor, coverImage: undefined } : null);
       await supabase.from('trips').update({ color: newColor, cover_image: null }).eq('id', trip.id);
       fetchTripData();
@@ -237,7 +280,6 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
 
   const headerStyle = trip.coverImage ? { backgroundImage: `url(${trip.coverImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {};
   const headerClass = trip.coverImage ? "relative text-white" : `bg-gradient-to-r ${trip.color} text-white relative`;
-
   const glassContainer = "bg-black/20 backdrop-blur-md px-4 py-2 rounded-xl text-xs font-bold border border-white/10 text-white flex items-center gap-2 shadow-sm";
 
   return (
@@ -249,10 +291,16 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
             <div className="mb-6 flex justify-between items-start">
                 <Link href="/" className="p-2.5 bg-black/20 border border-white/10 rounded-xl hover:bg-black/30 transition backdrop-blur-md flex items-center justify-center text-white"><ArrowLeft /></Link>
                 
-                {trip.startDate && (
-                    <div className="px-3 py-1.5 bg-yellow-400 text-yellow-900 rounded-xl text-[10px] font-black uppercase tracking-wide shadow-lg border border-yellow-200 transform rotate-1">
-                        {getCountdownText()}
+                {trip.pending ? (
+                    <div className="px-3 py-1.5 bg-white/90 text-slate-900 rounded-xl text-[10px] font-black uppercase tracking-wide shadow-lg flex items-center gap-1">
+                        <CloudUploadIcon /> Čeká na sync
                     </div>
+                ) : (
+                    trip.startDate && (
+                        <div className="px-3 py-1.5 bg-yellow-400 text-yellow-900 rounded-xl text-[10px] font-black uppercase tracking-wide shadow-lg border border-yellow-200 transform rotate-1">
+                            {getCountdownText()}
+                        </div>
+                    )
                 )}
             </div>
             
@@ -278,33 +326,10 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
       <div className="-mt-12 bg-white rounded-t-3xl min-h-screen relative z-10 flex flex-col shadow-2xl shadow-black/5">
         
         <div className="flex border-b border-gray-100 px-2 pt-2">
-          <button 
-            onClick={() => setActiveTab('plan')} 
-            className={`flex-1 py-4 text-xs font-bold flex flex-col items-center gap-1.5 transition-all ${activeTab === 'plan' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
-          >
-            <ListIcon /> PLÁN
-          </button>
-          
-          <button 
-            onClick={() => setActiveTab('budget')} 
-            className={`flex-1 py-4 text-xs font-bold flex flex-col items-center gap-1.5 transition-all ${activeTab === 'budget' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
-          >
-            <WalletIcon /> ROZPOČET
-          </button>
-          
-          <button 
-            onClick={() => setActiveTab('info')} 
-            className={`flex-1 py-4 text-xs font-bold flex flex-col items-center gap-1.5 transition-all ${activeTab === 'info' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
-          >
-            <InfoIcon /> INFO
-          </button>
-          
-          <button 
-            onClick={() => setActiveTab('settings')} 
-            className={`flex-1 py-4 text-xs font-bold flex flex-col items-center gap-1.5 transition-all ${activeTab === 'settings' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
-          >
-            <SettingsIcon /> NASTAVENÍ
-          </button>
+          <button onClick={() => setActiveTab('plan')} className={`flex-1 py-4 text-xs font-bold flex flex-col items-center gap-1.5 transition-all ${activeTab === 'plan' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}><ListIcon /> PLÁN</button>
+          <button onClick={() => setActiveTab('budget')} className={`flex-1 py-4 text-xs font-bold flex flex-col items-center gap-1.5 transition-all ${activeTab === 'budget' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}><WalletIcon /> ROZPOČET</button>
+          <button onClick={() => setActiveTab('info')} className={`flex-1 py-4 text-xs font-bold flex flex-col items-center gap-1.5 transition-all ${activeTab === 'info' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}><InfoIcon /> INFO</button>
+          <button onClick={() => setActiveTab('settings')} className={`flex-1 py-4 text-xs font-bold flex flex-col items-center gap-1.5 transition-all ${activeTab === 'settings' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}><SettingsIcon /> NASTAVENÍ</button>
         </div>
 
         <div className="p-6 flex-1">
