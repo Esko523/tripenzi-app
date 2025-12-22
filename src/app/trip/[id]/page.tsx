@@ -17,8 +17,8 @@ const ListIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height
 const WalletIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>;
 const InfoIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="16" y2="12"/><line x1="12" x2="12.01" y1="8" y2="8"/></svg>;
 const SettingsIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>;
-const WifiIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h.01"/><path d="M2 8.82a15 15 0 0 1 20 0"/><path d="M5 12.859a10 10 0 0 1 14 0"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/></svg>;
 const WifiOffIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="2" x2="22" y1="2" y2="22"/><path d="M12 20h.01"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/><path d="M5 12.859a10 10 0 0 1 5.17-2.69"/><path d="M19 12.859a10 10 0 0 0-2.007-1.523"/><path d="M2 8.82a15 15 0 0 1 4.17-2.69"/><path d="M22 8.82a15 15 0 0 0-11.288-3.136"/><path d="M16.72 11.06a10 10 0 0 1 5.17 2.69"/></svg>;
+const CloudUploadIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg>;
 
 type Event = { id: number; time: string; title: string; location?: string; date?: string; color?: string; };
 type Participant = { id: number; name: string; };
@@ -43,6 +43,17 @@ type Trip = {
   weatherLocation?: string;
 };
 
+// --- TYPY PRO OFFLINE SYNC ---
+type SyncAction = 
+  | { type: 'ADD_EXPENSE'; payload: any; tempId: number }
+  | { type: 'DELETE_EXPENSE'; payload: { id: number } }
+  | { type: 'ADD_EVENT'; payload: any; tempId: number }
+  | { type: 'DELETE_EVENT'; payload: { id: number } }
+  | { type: 'UPDATE_EVENT'; payload: any; id: number }
+  | { type: 'ADD_PARTICIPANT'; payload: { name: string }; tempId: number }
+  | { type: 'DELETE_PARTICIPANT'; payload: { id: number } }
+  | { type: 'UPDATE_DETAILS'; payload: { notes: string; photo_link: string } };
+
 export default function TripDetail({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const shareCodeParam = resolvedParams.id; 
@@ -52,18 +63,106 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
   const [activeTab, setActiveTab] = useState<'plan' | 'budget' | 'info' | 'settings'>('plan');
   const [trip, setTrip] = useState<Trip | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isOnline, setIsOnline] = useState(true); // Nový stav
+  const [isOnline, setIsOnline] = useState(true);
+  const [pendingSyncs, setPendingSyncs] = useState<number>(0);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
       const tabParam = searchParams.get('tab');
       if (tabParam === 'settings') setActiveTab('settings');
   }, [searchParams]);
 
+  // --- SYNC ENGINE ---
+  const saveToQueue = (action: SyncAction) => {
+      const queue: SyncAction[] = JSON.parse(localStorage.getItem(`sync_queue_${trip?.id}`) || '[]');
+      queue.push(action);
+      localStorage.setItem(`sync_queue_${trip?.id}`, JSON.stringify(queue));
+      setPendingSyncs(queue.length);
+  };
+
+  const processQueue = useCallback(async () => {
+    if (!trip?.id || !navigator.onLine || isSyncing) return;
+    
+    const queueKey = `sync_queue_${trip.id}`;
+    const queue: SyncAction[] = JSON.parse(localStorage.getItem(queueKey) || '[]');
+    
+    if (queue.length === 0) {
+        setPendingSyncs(0);
+        return;
+    }
+
+    setIsSyncing(true);
+    console.log("🔄 Spouštím synchronizaci...");
+
+    const newQueue = [...queue];
+    const processedIndices: number[] = [];
+
+    for (let i = 0; i < queue.length; i++) {
+        const action = queue[i];
+        try {
+            if (action.type === 'ADD_EXPENSE') {
+                // Odstraníme tempId z payloadu pro DB
+                await supabase.from('expenses').insert([{ ...action.payload, trip_id: trip.id }]);
+            } 
+            else if (action.type === 'DELETE_EXPENSE') {
+                await supabase.from('expenses').delete().eq('id', action.payload.id);
+            }
+            else if (action.type === 'ADD_EVENT') {
+                 await supabase.from('events').insert([{ ...action.payload, trip_id: trip.id }]);
+            }
+            else if (action.type === 'DELETE_EVENT') {
+                await supabase.from('events').delete().eq('id', action.payload.id);
+            }
+            else if (action.type === 'UPDATE_EVENT') {
+                await supabase.from('events').update(action.payload).eq('id', action.id);
+            }
+            else if (action.type === 'ADD_PARTICIPANT') {
+                await supabase.from('participants').insert([{ trip_id: trip.id, name: action.payload.name }]);
+            }
+            else if (action.type === 'DELETE_PARTICIPANT') {
+                await supabase.from('participants').delete().eq('id', action.payload.id);
+            }
+            else if (action.type === 'UPDATE_DETAILS') {
+                 // Check if exists
+                 const { data } = await supabase.from('trip_details').select('id').eq('trip_id', trip.id).maybeSingle();
+                 if (data) await supabase.from('trip_details').update(action.payload).eq('trip_id', trip.id);
+                 else await supabase.from('trip_details').insert([{ trip_id: trip.id, ...action.payload }]);
+            }
+
+            processedIndices.push(i);
+        } catch (err) {
+            console.error("Chyba při syncu akce:", action, err);
+            // Pokud selže, necháme ji ve frontě (nebo ji přesuneme na konec)
+        }
+    }
+
+    // Odstraníme zpracované akce
+    const remainingQueue = newQueue.filter((_, index) => !processedIndices.includes(index));
+    localStorage.setItem(queueKey, JSON.stringify(remainingQueue));
+    setPendingSyncs(remainingQueue.length);
+    setIsSyncing(false);
+
+    // Načteme čerstvá data ze serveru (aby se srovnala IDčka)
+    if (processedIndices.length > 0) {
+        fetchTripData(true); 
+    }
+  }, [trip?.id, isSyncing]);
+
   // --- ONLINE/OFFLINE DETEKCE ---
   useEffect(() => {
     if (typeof navigator !== 'undefined') setIsOnline(navigator.onLine);
     
-    const handleOnline = () => { setIsOnline(true); fetchTripData(true); }; // Při připojení obnovit data
+    // Při startu zkontrolujeme frontu
+    if (trip?.id) {
+        const q = JSON.parse(localStorage.getItem(`sync_queue_${trip.id}`) || '[]');
+        setPendingSyncs(q.length);
+    }
+
+    const handleOnline = () => { 
+        setIsOnline(true); 
+        processQueue(); // Hned zkusit syncnout
+        fetchTripData(true); 
+    };
     const handleOffline = () => setIsOnline(false);
 
     window.addEventListener('online', handleOnline);
@@ -72,7 +171,8 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
         window.removeEventListener('online', handleOnline);
         window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [trip?.id, processQueue]);
+
 
   const formatDateRange = (start?: string, end?: string, textDate?: string) => {
       if (start) {
@@ -112,40 +212,36 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
       return "🏁 Trip skončil";
   };
 
-  // --- LOCAL FIRST FETCH ---
+  // --- FETCH DATA ---
   const fetchTripData = useCallback(async (forceOnline = false) => {
     const cacheKey = `trip_detail_${shareCodeParam}`;
 
-    // 1. Zkusit načíst z cache (okamžitě)
+    // 1. Zkusit cache (okamžité zobrazení)
     if (!forceOnline) {
         try {
             const cached = localStorage.getItem(cacheKey);
             if (cached) {
-                const parsed = JSON.parse(cached);
-                setTrip(parsed);
+                setTrip(JSON.parse(cached));
                 setLoading(false);
-                // Pokud jsme offline, končíme zde a používáme cache
+                // Kontrola fronty pro tento trip
+                const parsed = JSON.parse(cached);
+                const q = JSON.parse(localStorage.getItem(`sync_queue_${parsed.id}`) || '[]');
+                setPendingSyncs(q.length);
+
                 if (typeof navigator !== 'undefined' && !navigator.onLine) return;
             }
-        } catch (e) { console.error("Cache read error", e); }
+        } catch (e) { console.error(e); }
     }
 
-    // 2. Pokud jsme offline a nemáme cache, máme smůlu (zobrazí loading nebo chybu)
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        setLoading(false);
-        return;
-    }
+    if (typeof navigator !== 'undefined' && !navigator.onLine) { setLoading(false); return; }
 
-    // 3. Online fetch (Sync)
     try {
         const { data: tripData, error: tripError } = await supabase.from('trips').select('*').eq('share_code', shareCodeParam).single();
         if (tripError || !tripData) { 
-            // Fallback pro ID místo share_code
             if (!isNaN(Number(shareCodeParam))) {
                  const { data: oldTrip } = await supabase.from('trips').select('*').eq('id', shareCodeParam).single();
                  if (oldTrip && oldTrip.share_code) { router.push(`/trip/${oldTrip.share_code}`); return; }
             }
-            // Pokud trip neexistuje a nemáme ho v cache -> domů
             if (!localStorage.getItem(cacheKey)) router.push('/'); 
             return; 
         }
@@ -188,16 +284,18 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
         };
 
         setTrip(newTripObj);
-        
-        // ULOŽIT DO CACHE
         localStorage.setItem(cacheKey, JSON.stringify(newTripObj));
+        
+        // Zkontrolovat frontu i po fetchi
+        const q = JSON.parse(localStorage.getItem(`sync_queue_${tripId}`) || '[]');
+        setPendingSyncs(q.length);
 
     } catch (err) { console.error(err); } finally { setLoading(false); }
   }, [shareCodeParam, router]);
 
   useEffect(() => { fetchTripData(); }, [fetchTripData]);
 
-  // Realtime updates (jen když jsme online)
+  // Realtime updates
   useEffect(() => {
     if (!trip?.id || !isOnline) return;
     const channel = supabase
@@ -211,35 +309,154 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
     return () => { supabase.removeChannel(channel); };
   }, [trip?.id, fetchTripData, isOnline]);
 
-  // --- WRITE FUNCTIONS (BLOKOVÁNY OFFLINE) ---
-  const checkOnline = () => {
-    if (!navigator.onLine) {
-        alert("Jsi offline 🌐\n\nZměny můžeš provádět, až se připojíš k internetu.");
-        return false;
-    }
-    return true;
+  // --- MODIFIKAČNÍ FUNKCE (OFFLINE READY) ---
+
+  const addParticipant = async (name: string) => { 
+      if (!trip) return;
+      
+      if (isOnline) {
+          await supabase.from('participants').insert([{ trip_id: trip.id, name }]); 
+          fetchTripData(true);
+      } else {
+          // Optimistický update
+          const tempId = -Date.now();
+          const newPart = { id: tempId, name };
+          setTrip(prev => prev ? { ...prev, participants: [...(prev.participants || []), newPart] } : null);
+          saveToQueue({ type: 'ADD_PARTICIPANT', payload: { name }, tempId });
+      }
   };
 
-  const addParticipant = async (name: string) => { if (!trip || !checkOnline()) return; await supabase.from('participants').insert([{ trip_id: trip.id, name }]); fetchTripData(true); };
-  const deleteParticipant = async (id: number) => { if (!checkOnline()) return; await supabase.from('participants').delete().eq('id', id); fetchTripData(true); };
-  
-  const addExpense = async (expenseData: Omit<Expense, "id">): Promise<void> => { if (!trip || !checkOnline()) return; const dbPayload = { trip_id: trip.id, title: expenseData.title, amount: expenseData.amount, currency: expenseData.currency, exchange_rate: expenseData.exchangeRate, payer: expenseData.payer, category: expenseData.category, split_method: expenseData.splitMethod, split_details: expenseData.splitDetails, for_whom: expenseData.forWhom, is_settlement: expenseData.isSettlement }; await supabase.from('expenses').insert([dbPayload]); fetchTripData(true); };
-  const deleteExpense = async (id: number) => { if (!checkOnline()) return; await supabase.from('expenses').delete().eq('id', id); fetchTripData(true); };
-  
-  const saveDetails = async (notes: string, photoLink: string) => { if(!trip || !checkOnline()) return; const { data } = await supabase.from('trip_details').select('id').eq('trip_id', trip.id).maybeSingle(); if (data) await supabase.from('trip_details').update({ notes, photo_link: photoLink }).eq('trip_id', trip.id); else await supabase.from('trip_details').insert([{ trip_id: trip.id, notes, photo_link: photoLink }]); };
-  
-  const addEvent = async (event: { title: string, location: string, time: string, date: string, color: string }) => { if (!trip || !checkOnline()) return; await supabase.from('events').insert([{ trip_id: trip.id, ...event }]); fetchTripData(true); };
-  const deleteEvent = async (id: number) => { if (!checkOnline()) return; await supabase.from('events').delete().eq('id', id); fetchTripData(true); };
-  const editEvent = async (id: number, updatedData: { title: string, location: string, time: string, date: string, color: string }) => { if (!checkOnline()) return; await supabase.from('events').update(updatedData).eq('id', id); fetchTripData(true); };
+  const deleteParticipant = async (id: number) => { 
+      if (!trip) return;
+      
+      if (id < 0) { // Smazání offline položky (ještě není v DB)
+           setTrip(prev => prev ? { ...prev, participants: prev.participants?.filter(p => p.id !== id) } : null);
+           // Odstranit z fronty by bylo složitější, necháme sync selhat nebo to ignorujeme
+           return;
+      }
 
+      if (isOnline) {
+          await supabase.from('participants').delete().eq('id', id); 
+          fetchTripData(true);
+      } else {
+          setTrip(prev => prev ? { ...prev, participants: prev.participants?.filter(p => p.id !== id) } : null);
+          saveToQueue({ type: 'DELETE_PARTICIPANT', payload: { id } });
+      }
+  };
+  
+  const addExpense = async (expenseData: Omit<Expense, "id">): Promise<void> => { 
+      if (!trip) return;
+      const dbPayload = { 
+          title: expenseData.title, amount: expenseData.amount, currency: expenseData.currency, 
+          exchange_rate: expenseData.exchangeRate, payer: expenseData.payer, category: expenseData.category, 
+          split_method: expenseData.splitMethod, split_details: expenseData.splitDetails, for_whom: expenseData.forWhom, 
+          is_settlement: expenseData.isSettlement 
+      };
+
+      if (isOnline) {
+          await supabase.from('expenses').insert([{ ...dbPayload, trip_id: trip.id }]); 
+          fetchTripData(true);
+      } else {
+          const tempId = -Date.now();
+          const newExpense = { ...expenseData, id: tempId };
+          setTrip(prev => {
+              if(!prev) return null;
+              const newExpenses = [newExpense, ...(prev.expenses || [])];
+              const newSpent = prev.spent + (newExpense.isSettlement ? 0 : (newExpense.amount * newExpense.exchangeRate));
+              return { ...prev, expenses: newExpenses, spent: Math.round(newSpent) };
+          });
+          saveToQueue({ type: 'ADD_EXPENSE', payload: dbPayload, tempId });
+      }
+  };
+
+  const deleteExpense = async (id: number) => { 
+      if (!trip) return;
+
+      if (id < 0) {
+           setTrip(prev => prev ? { ...prev, expenses: prev.expenses?.filter(e => e.id !== id) } : null);
+           return;
+      }
+
+      if (isOnline) {
+          await supabase.from('expenses').delete().eq('id', id); 
+          fetchTripData(true);
+      } else {
+          setTrip(prev => prev ? { ...prev, expenses: prev.expenses?.filter(e => e.id !== id) } : null);
+          saveToQueue({ type: 'DELETE_EXPENSE', payload: { id } });
+      }
+  };
+  
+  const saveDetails = async (notes: string, photoLink: string) => { 
+      if(!trip) return;
+      
+      if (isOnline) {
+          const { data } = await supabase.from('trip_details').select('id').eq('trip_id', trip.id).maybeSingle(); 
+          if (data) await supabase.from('trip_details').update({ notes, photo_link: photoLink }).eq('trip_id', trip.id); 
+          else await supabase.from('trip_details').insert([{ trip_id: trip.id, notes, photo_link: photoLink }]);
+      } else {
+          setTrip(prev => prev ? { ...prev, notes, photoLink } : null);
+          saveToQueue({ type: 'UPDATE_DETAILS', payload: { notes, photo_link: photoLink } });
+      }
+  };
+  
+  const addEvent = async (event: { title: string, location: string, time: string, date: string, color: string }) => { 
+      if (!trip) return;
+      
+      if (isOnline) {
+          await supabase.from('events').insert([{ trip_id: trip.id, ...event }]); 
+          fetchTripData(true);
+      } else {
+          const tempId = -Date.now();
+          const newEvent = { ...event, id: tempId };
+          setTrip(prev => prev ? { ...prev, events: [...(prev.events || []), newEvent] } : null);
+          saveToQueue({ type: 'ADD_EVENT', payload: event, tempId });
+      }
+  };
+
+  const deleteEvent = async (id: number) => { 
+      if (!trip) return;
+      if (id < 0) {
+           setTrip(prev => prev ? { ...prev, events: prev.events?.filter(e => e.id !== id) } : null);
+           return;
+      }
+
+      if (isOnline) {
+          await supabase.from('events').delete().eq('id', id); 
+          fetchTripData(true);
+      } else {
+           setTrip(prev => prev ? { ...prev, events: prev.events?.filter(e => e.id !== id) } : null);
+           saveToQueue({ type: 'DELETE_EVENT', payload: { id } });
+      }
+  };
+
+  const editEvent = async (id: number, updatedData: { title: string, location: string, time: string, date: string, color: string }) => { 
+      if(!trip) return;
+
+      if (id < 0) {
+          setTrip(prev => prev ? { ...prev, events: prev.events?.map(e => e.id === id ? { ...e, ...updatedData } : e) } : null);
+          return;
+      }
+
+      if (isOnline) {
+          await supabase.from('events').update(updatedData).eq('id', id); 
+          fetchTripData(true);
+      } else {
+          setTrip(prev => prev ? { ...prev, events: prev.events?.map(e => e.id === id ? { ...e, ...updatedData } : e) } : null);
+          saveToQueue({ type: 'UPDATE_EVENT', payload: updatedData, id });
+      }
+  };
+
+  // Settings (Zbytek necháme jen online, jsou to citlivé akce)
   const handleUpdateTripFromSettings = async (updatedData: any) => {
-      if(!trip || !checkOnline()) return;
+      if(!trip) return;
+      if (!isOnline) { alert("Nastavení tripu lze měnit jen online."); return; }
       const { error } = await supabase.from('trips').update(updatedData).eq('id', trip.id);
       if (!error) { alert("Nastavení uloženo! ✅"); fetchTripData(true); } else { alert("Chyba: " + error.message); }
   };
 
   const handleDeleteTripFromSettings = async () => {
-      if(!trip || !checkOnline()) return;
+      if(!trip) return;
+      if (!isOnline) { alert("Smazat trip lze jen online."); return; }
       if(confirm("Opravdu smazat celý trip? Tato akce je nevratná.")) {
           const { error } = await supabase.from('trips').delete().eq('id', trip.id);
           if(!error) router.push('/');
@@ -248,7 +465,12 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
   };
 
   const handleColorChange = async (newColor: string) => {
-      if(!trip || !checkOnline()) return;
+      if(!trip) return;
+      if (!isOnline) { 
+           setTrip(prev => prev ? { ...prev, color: newColor, coverImage: undefined } : null);
+           // Barvu neukládáme do fronty, není kritická
+           return; 
+      }
       setTrip(prev => prev ? { ...prev, color: newColor, coverImage: undefined } : null);
       await supabase.from('trips').update({ color: newColor, cover_image: null }).eq('id', trip.id);
       fetchTripData(true);
@@ -283,10 +505,16 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
             <div>
                 <div className="flex items-center gap-2 mb-4">
                     <h1 className="text-4xl font-bold drop-shadow-lg leading-tight">{trip.name}</h1>
-                    {/* Offline indikátor */}
+                    
+                    {/* Offline / Sync Indikátory */}
                     {!isOnline && (
                         <div className="bg-orange-500/90 text-white p-2 rounded-full shadow-lg border border-white/20 animate-pulse" title="Jsi offline">
                             <WifiOffIcon />
+                        </div>
+                    )}
+                    {pendingSyncs > 0 && (
+                         <div className="bg-blue-500/90 text-white px-2 py-1 rounded-lg shadow-lg border border-white/20 flex items-center gap-1 text-xs font-bold animate-bounce" title="Čekající změny">
+                            <CloudUploadIcon /> {pendingSyncs}
                         </div>
                     )}
                 </div>
@@ -307,7 +535,7 @@ export default function TripDetail({ params }: { params: Promise<{ id: string }>
         </div>
       </div>
 
-      {/* --- HLAVNÍ OBSAH (Méně kulatý vršek: rounded-t-3xl) --- */}
+      {/* --- HLAVNÍ OBSAH --- */}
       <div className="-mt-12 bg-white rounded-t-3xl min-h-screen relative z-10 flex flex-col shadow-2xl shadow-black/5">
         
         {/* NAVIGACE */}

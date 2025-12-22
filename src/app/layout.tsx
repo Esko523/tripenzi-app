@@ -1,38 +1,17 @@
-import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import type { Metadata } from "next";
 import "./globals.css";
-import CacheLogger from "@/components/CacheLogger";
-import PwaRegister from "@/components/PwaRegister";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-// --- ZDE JE OPRAVA ---
-// Viewport se v Next.js 16+ definuje takto samostatně:
-export const viewport: Viewport = {
-  width: "device-width",
-  initialScale: 1,
-  maximumScale: 1,
-  userScalable: false, // Zákaz zoomování (native app feel)
-};
 
 export const metadata: Metadata = {
   title: "Tripenzi",
-  description: "Plánování výletů a sdílení nákladů",
-  manifest: "/manifest.json", // Odkaz na PWA manifest
+  description: "Cestovatelská aplikace",
+  manifest: "/manifest.json",
+  viewport: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0",
+  themeColor: "#ffffff",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
     title: "Tripenzi",
   },
-  // Tady už "viewport" nesmí být
 };
 
 export default function RootLayout({
@@ -43,9 +22,6 @@ export default function RootLayout({
   return (
     <html lang="cs">
       <body>
-        <PwaRegister />  {/* <--- PŘIDAT SEM (Ruční registrace) */}
-        <CacheLogger />  {/* (Logger pro kontrolu) */}
-        
         {children}
       </body>
     </html>
