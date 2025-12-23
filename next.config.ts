@@ -1,12 +1,13 @@
-import type { NextConfig } from "next";
-
 const withPWA = require("@ducanh2912/next-pwa").default({
   dest: "public",
   cacheOnFrontEndNav: true,
   aggressiveFrontEndNavCaching: true,
   reloadOnOnline: true,
   swcMinify: true,
-  disable: process.env.NODE_ENV === "development",
+  // ZMĚNA 1: Povolit PWA i ve vývoji, abychom mohli testovat workera
+  disable: false, 
+  // ZMĚNA 2: Cesta k tvému vlastnímu workeru
+  customWorkerSrc: "worker", 
   workboxOptions: {
     disableDevLogs: true,
     runtimeCaching: [
@@ -50,9 +51,3 @@ const withPWA = require("@ducanh2912/next-pwa").default({
     ],
   },
 });
-
-const nextConfig: NextConfig = {
-  reactCompiler: true,
-};
-
-export default withPWA(nextConfig);

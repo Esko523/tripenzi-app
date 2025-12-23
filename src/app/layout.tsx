@@ -1,7 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import ServiceWorkerRegister from "@/components/ServiceWorkerRegister"; // <--- IMPORT
 
-// 1. ZDE JE JEN SEO A PWA INFO
+// Tady už NENÍ "use client", takže metadata budou fungovat
 export const metadata: Metadata = {
   title: "Tripenzi",
   description: "Cestovatelská aplikace",
@@ -13,7 +14,6 @@ export const metadata: Metadata = {
   },
 };
 
-// 2. TOTO JE NOVÉ - MUSÍ BÝT ZVLÁŠŤ
 export const viewport: Viewport = {
   themeColor: "#ffffff",
   width: "device-width",
@@ -29,7 +29,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="cs">
-      <body>
+      <body suppressHydrationWarning={true}>
+        <ServiceWorkerRegister /> {/* <--- VLOŽIT SEM */}
         {children}
       </body>
     </html>

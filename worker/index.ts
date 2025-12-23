@@ -1,11 +1,20 @@
+// @ts-nocheck
 /// <reference lib="webworker" />
 
-// 1. Zamezíme konfliktům s "self" tím, že si vytvoříme typovanou proměnnou
 const sw = self as unknown as ServiceWorkerGlobalScope;
+
+sw.addEventListener('install', () => {
+  console.log('👷 [Service Worker] Instalace...');
+  sw.skipWaiting(); // Nečekat ve frontě, hned aktivovat
+});
+
+sw.addEventListener('activate', (event) => {
+  console.log('🚀 [Service Worker] Aktivace...');
+  event.waitUntil(sw.clients.claim()); // Okamžitě převzít kontrolu nad otevřenými stránkami
+});
 
 // 2. Naslouchání na příchozí notifikaci (PUSH)
 sw.addEventListener('push', (event: any) => {
-  // Používáme "event: any", abychom se vyhnuli chybám typů PushEvent, pokud nejsou v konfigu
   console.log('📩 [Service Worker] Push přijat!');
 
   let data;
@@ -17,13 +26,14 @@ sw.addEventListener('push', (event: any) => {
     data = { title: 'Tripenzi', body: event.data?.text() || 'Nová zpráva' };
   }
 
+  // Fallback, pokud data chybí úplně
   if (!data) data = { title: 'Tripenzi', body: 'Něco se děje!' };
 
   const promiseChain = sw.registration.showNotification(data.title, {
     body: data.body,
     icon: '/icon-192x192.png',
     badge: '/icon-192x192.png',
-    // @ts-ignore
+    // @ts-ignore - TypeScript definice pro vibrate chybí, ale prohlížeče to umí
     vibrate: [100, 50, 100],
     data: {
       url: sw.location.origin + '/trip/' + (data.shareCode || ''),
@@ -54,4 +64,16 @@ sw.addEventListener('notificationclick', (event: any) => {
       return sw.clients.openWindow(event.notification.data.url || '/');
     })
   );
+});
+
+// 4. PŘIDÁNO: Testování z hlavní konzole
+sw.addEventListener('message', (event: any) => {
+  if (event.data && event.data.type === 'TEST_PUSH') {
+    const promiseChain = sw.registration.showNotification('Test z hlavní konzole', {
+      body: 'Funguje to! Obešli jsme hledání Inspect tlačítka. 😎',
+      icon: '/icon-192x192.png',
+      vibrate: [100, 50, 100],
+    });
+    event.waitUntil(promiseChain);
+  }
 });
